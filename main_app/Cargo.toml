@@ -1,0 +1,12 @@
+[package]
+name = "main_app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { workspace = true }
+anyhow ={workspace = true}
+data_engine = { path = "../data_engine" }
+database_engine ={path = "../database_engine"}
+prediction_engine = { path = "../prediction_engine" }
+order_engine = { path = "../order_engine" }
