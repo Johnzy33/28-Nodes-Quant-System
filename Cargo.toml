@@ -10,7 +10,7 @@ members = [
 [workspace.dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 serde = { version = "1.0", features = ["derive"] }
-surrealdb = "2.3.9"
+surrealdb = "2.3.10"
 chrono = { version = "0.4", features = ["alloc", "serde"] }
 serde_json = "1.0"
 anyhow = "1.0"

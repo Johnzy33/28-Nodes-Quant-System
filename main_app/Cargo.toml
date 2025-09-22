@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 tokio = { workspace = true }
 anyhow ={workspace = true}
+surrealdb = {workspace=true}
 data_engine = { path = "../data_engine" }
 database_engine ={path = "../database_engine"}
 prediction_engine = { path = "../prediction_engine" }

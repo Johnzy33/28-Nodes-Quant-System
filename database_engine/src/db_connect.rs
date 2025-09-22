@@ -3,9 +3,9 @@ use surrealdb::Surreal;
 use anyhow::{Result, Context};
 use surrealdb::opt::auth::Root;
 use crate::schema;
+//use crate::DB;
 
 pub type DB = Surreal<Client>;
-
 
 /// Connects to the SurrealDB server and signs in.
 pub async fn connect() -> Result<DB> {
@@ -18,7 +18,7 @@ pub async fn connect() -> Result<DB> {
     // Select the namespace and database to use
     db.use_ns("28_Nodes").use_db("trading_system").await.context("Failed to use namespace/database")?;
 
-    schema::apply_schema(&db).await.context("Failed to apply schema")?;
+    //schema::apply_schema(&db).await.context("Failed to apply schema")?;
 
 
     Ok(db)

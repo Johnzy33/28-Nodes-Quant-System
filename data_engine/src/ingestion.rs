@@ -12,7 +12,7 @@ use database_engine::{
     db_connect::connect,
     queries::{create_or_get_asset, ingest_market_data},
 };
-use shared_models::{Asset, MarketData};
+use shared_models::{Asset, MarketData, Candle};
 use surrealdb::sql::Datetime;
 
 // CsvRecord struct
@@ -53,9 +53,9 @@ pub async fn ingest_from_csv(
         name: asset_name,
         asset_class: asset_class,
         currency: currency,
-        tick_size: Some(0.01),
-        lot_size: Some(0.01),
-        price_decimals: Some(2),
+        tick_size: Some(0.1),
+        lot_size: Some(0.1),
+        price_decimals: Some(1),
         exchange: exchange,
         timezone: timezone,
         active: Some(true),
@@ -90,7 +90,7 @@ pub async fn ingest_from_csv(
             close: raw_record.close,
             volume: Some(raw_record.volume),
             seq: Some(0),
-            source: Some("Dukascopy".to_string()),
+            source: Some("DUKASCOPY".to_string()),
         };
 
         records_to_ingest.push(market_data);

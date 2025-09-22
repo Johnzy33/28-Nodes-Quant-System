@@ -5,11 +5,17 @@ pub mod prediction;
 pub mod strategy;
 pub mod order;
 pub mod time;
+pub mod candle;
+pub mod sessions;
+pub mod shared_aggregators;
 
 pub use prelude::*;
 pub use asset::Asset;
 pub use market_data::MarketData;
 pub use prediction::Prediction;
+pub use candle::{Candle, CandlePattern, DEFAULT_DOJI_BODY_RATIO, DEFAULT_BODY_WICK_RATIO_LONG, DEFAULT_BODY_WICK_RATIO_SHORT, DEFAULT_UPPER_VS_LOWER_RATIO, DEFAULT_EPS};
 pub use strategy::Strategy;
 pub use order::{Order, OrderSide, OrderType, OrderStatus};
 pub use time::{parse_ymd_hms_to_datetime, format_datetime_iso};
+pub use sessions::Session;
+pub use shared_aggregators::*;
