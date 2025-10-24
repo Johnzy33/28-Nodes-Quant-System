@@ -1,12 +1,12 @@
-use surrealdb::engine::remote::ws::{Client, Ws};
-use surrealdb::Surreal;
-//use anyhow::{Result, Context};
-//use db_connect::connect;
 
-// Re-export the query functions for external use
-pub mod queries;
-pub mod db_connect;
-pub  mod schema;
-pub type DB = Surreal<Client>;
+pub mod ingestion;
+pub mod config;
+pub mod runtime;
+pub mod schema_setup;
+
+pub use config::{ConsumerConfig};
+pub use runtime::{setup_database_pool};
+pub use schema_setup::apply_schema;
+pub use deadpool_postgres::Pool;
 
 

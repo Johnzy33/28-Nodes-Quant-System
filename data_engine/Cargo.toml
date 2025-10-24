@@ -10,11 +10,14 @@ edition = "2024"
 tokio = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
-surrealdb = {workspace=true}
 chrono = { workspace = true }
 csv-async = {version = "1.3"}
 tokio-util ={workspace = true}
 futures-util = {workspace = true}
+csv = { workspace = true }
+rdkafka = { workspace = true }
+serde_json = { workspace = true }
+dotenvy = {workspace = true}
 
 # Local crate dependencies within the workspace
 database_engine = { path = "../database_engine" }

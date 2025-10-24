@@ -1,0 +1,48 @@
+[
+  {
+    "symbol": "US2000",
+    "timezone": "America/New_York",
+    "name": "Russell 2000 Futures",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "DuckasCopy"
+  },
+  {
+    "symbol": "US100",
+    "timezone": "America/New_York",
+    "name": "Nasdaq 100 Futures",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "DuckasCopy"
+  },
+  {
+    "symbol": "UK100",
+    "timezone": "Europe/London",
+    "name": "FTSE 100 Futures",
+    "asset_class": "Index_Future",
+    "currency": "GBP",
+    "exchange": "ICE",
+    "source": "DuckasCopy"
+  },
+  {
+    "symbol": "JP225",
+    "timezone": "Asia/Tokyo",
+    "name": "Nikkei 225 Futures",
+    "asset_class": "Index_Future",
+    "currency": "JPY",
+    "exchange": "OSE",
+    "source": "DuckasCopy"
+  },
+  {
+    "symbol": "SPX500",
+    "timezone": "America/New_York",
+    "name": "S&P 500 Index",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "DuckasCopy"
+  }
+
+]
