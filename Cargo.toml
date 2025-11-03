@@ -17,9 +17,10 @@ anyhow = "1.0.100"
 csv-async = {version = "1.3", features = ["tokio-io"]}
 tokio-util = {version = "0.7", features = ["full"]}
 futures-util = "0.3.31"
-rdkafka = { version = "0.30", features = ["ssl"] }
+rdkafka = { version = "0.38.0", features = ["ssl", "tokio"] }
 csv = "1.2"
 deadpool-postgres = { version = "0.14.1", features = [ "serde",] }
 dotenvy = "0.15"
 log = "0.4"
 env_logger = "0.11"
+chrono-tz = "0.10.4"

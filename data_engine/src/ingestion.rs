@@ -46,7 +46,7 @@ pub async fn ingest_from_csv(config: ProducerConfig) -> Result<()> {
             close: csv_record.close,
             volume: csv_record.volume,
             seq: None, 
-            source: Some("CSV_DuckasCopy".to_string()),
+            source: Some("FundedNext".to_string()),
         };
         
         let payload = serde_json::to_vec(&market_data).context("Failed to serialize MarketData")?;

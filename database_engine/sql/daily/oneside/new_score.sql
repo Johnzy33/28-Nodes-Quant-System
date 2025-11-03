@@ -1,0 +1,105 @@
+
+
+TRUNCATE asset_daily_composite_score;
+
+-- CTEs Daily_Conditions and Joined_Metrics remain the same, fetching all LT/ST metrics.
+
+WITH Daily_Conditions AS (
+    SELECT
+        trading_date, asset_id,
+        LAG(day_type, 1) OVER (PARTITION BY asset_id ORDER BY trading_date) AS Prior_Day_Type,
+        LAG(dow, 1) OVER (PARTITION BY asset_id ORDER BY trading_date) || ' -> ' || dow AS Current_DOW_Transition
+    FROM asset_daily_views
+),
+Joined_Metrics AS (
+    SELECT dc.trading_date, dc.asset_id,
+        cm.D_M1_Bullish_Prob_LT, cm.D_M1_Bearish_Prob_LT, cm.D_M1_Bullish_Prob_ST, cm.D_M1_Bearish_Prob_ST, cm.D_M1_Alignment_Prob, 
+        cm.D_M2_PDH_Prob_LT, cm.D_M2_PDL_Prob_LT, cm.D_M2_PWH_Prob_LT, cm.D_M2_PWL_Prob_LT, 
+        cm.D_M2_PDH_Prob_ST, cm.D_M2_PDL_Prob_ST, cm.D_M2_PWH_Prob_ST, cm.D_M2_PWL_Prob_ST, 
+        cm.D_M3_Continuation_Prob, cm.D_M4_Bullish_FT_Prob, cm.D_M4_Bearish_FT_Prob,
+        cm.D_M5_Bullish_Reversal_Risk, cm.D_M5_Bearish_Reversal_Risk
+    FROM Daily_Conditions dc
+    INNER JOIN asset_daily_conditional_metrics cm
+    ON cm.asset_id = dc.asset_id AND cm.PD_Type = dc.Prior_Day_Type AND cm.DOW_Transition = dc.Current_DOW_Transition
+    WHERE dc.Prior_Day_Type IS NOT NULL 
+),
+Combined_D_M_Scores AS (
+    SELECT trading_date, asset_id,
+        -- D.M1 Score: Differential Recency Edge + Alignment Multiplier
+        (
+            (
+                (D_M1_Bullish_Prob_ST - D_M1_Bearish_Prob_ST) 
+                - (D_M1_Bullish_Prob_LT - D_M1_Bearish_Prob_LT)
+            )
+            * (1.0 + D_M1_Alignment_Prob) 
+        ) AS D_M1_Score, 
+        -- D.M2 Score: Differential Recency Edge (ST Conviction - LT Conviction)
+        (
+            (
+                (D_M2_PWH_Prob_ST - D_M2_PWL_Prob_ST) * 0.60 + (D_M2_PDH_Prob_ST - D_M2_PDL_Prob_ST) * 0.40
+            ) 
+            -
+            (
+                (D_M2_PWH_Prob_LT - D_M2_PWL_Prob_LT) * 0.60 + (D_M2_PDH_Prob_LT - D_M2_PDL_Prob_LT) * 0.40
+            )
+        ) AS D_M2_Score, 
+        
+        D_M3_Continuation_Prob, D_M4_Bullish_FT_Prob, D_M4_Bearish_FT_Prob,
+        D_M5_Bullish_Reversal_Risk, D_M5_Bearish_Reversal_Risk
+    FROM Joined_Metrics
+),
+Base_Score AS (
+    -- 🔥 4. AGGRESSIVE DBS: 1.5x Multiplier Applied to the Differential Score 🔥
+    SELECT
+        trading_date, asset_id,
+        (D_M1_Score * 0.40 + D_M2_Score * 0.60) * 1.50 AS DBS_Score, -- 1.5x AMPLIFICATION
+        d_m3_continuation_prob, d_m4_bullish_ft_prob, d_m4_bearish_ft_prob,
+        d_m5_bullish_reversal_risk, d_m5_bearish_reversal_risk
+    FROM Combined_D_M_Scores
+),
+Factor_Calculation AS (
+    -- 🔥 5. SIMPLIFIED FACTORS: Less Restrictive (0.8 to 1.2 range) 🔥
+    SELECT
+        trading_date, asset_id, DBS_Score,
+        (0.8 + 0.4 * d_m3_continuation_prob) AS F_Commitment, 
+        CASE 
+            WHEN DBS_Score >= 0 THEN (0.8 + 0.4 * d_m4_bullish_ft_prob) -- Max 1.2
+            ELSE (0.8 + 0.4 * d_m4_bearish_ft_prob) 
+        END AS F_Sustainability,
+        CASE
+            WHEN DBS_Score >= 0 THEN (1.0 - 0.2 * d_m5_bullish_reversal_risk) -- Min 0.8
+            ELSE (1.0 - 0.2 * d_m5_bearish_reversal_risk)
+        END AS F_Reversal 
+    FROM Base_Score
+)
+, DCS_Calculation AS (
+    -- 6. Apply the final D.C.S. multiplicative formula
+    SELECT
+        trading_date, asset_id, DBS_Score, F_Commitment, F_Sustainability, F_Reversal,
+        (DBS_Score * F_Commitment * F_Sustainability * F_Reversal) AS DCS_Final_Score
+    FROM Factor_Calculation
+)
+-- 7. Final Insertion into the Composite Score Table
+INSERT INTO asset_daily_composite_score (
+    trading_date, asset_id, DBS, F_Commitment, F_Sustainability, F_Reversal, DCS, DCS_Classification
+)
+SELECT
+    d.trading_date, d.asset_id,
+    ROUND(d.DBS_Score::NUMERIC, 4) AS DBS,
+    ROUND(d.F_Commitment::NUMERIC, 4) AS F_Commitment,
+    ROUND(d.F_Sustainability::NUMERIC, 4) AS F_Sustainability,
+    ROUND(d.F_Reversal::NUMERIC, 4) AS F_Reversal,
+    ROUND(d.DCS_Final_Score::NUMERIC, 4) AS DCS,
+    CASE
+        -- Final Thresholds (Unchanged)
+        WHEN d.DCS_Final_Score >= 0.50 THEN 'High Conviction Long'
+        WHEN d.DCS_Final_Score > 0.25 THEN 'Medium Conviction Long'
+        WHEN d.DCS_Final_Score < -0.50 THEN 'High Conviction Short'
+        WHEN d.DCS_Final_Score < -0.25 THEN 'Medium Conviction Short'
+        ELSE 'Neutral/Low Conviction'
+    END AS DCS_Classification
+FROM DCS_Calculation d
+ON CONFLICT (trading_date, asset_id) 
+DO UPDATE SET
+    DBS = EXCLUDED.DBS, F_Commitment = EXCLUDED.F_Commitment, F_Sustainability = EXCLUDED.F_Sustainability,
+    F_Reversal = EXCLUDED.F_Reversal, DCS = EXCLUDED.DCS, DCS_Classification = EXCLUDED.DCS_Classification;

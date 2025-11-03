@@ -12,7 +12,8 @@ pub struct ConsumerConfig {
 
 impl ConsumerConfig {
     /// Loads configuration settings explicitly from environment variables.
-    pub fn load() -> Result<Self> {
+    pub fn 
+    load() -> Result<Self> {
         // Load environment variables from a .env file if it exists
         dotenvy::dotenv().ok();
         

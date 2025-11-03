@@ -3,7 +3,7 @@ use chrono::{DateTime, TimeZone,NaiveDateTime, Utc};
 use chrono_tz::Tz;
 
 // Define the target timezone once for clarity and correctness
-const NY_TIMEZONE: Tz = chrono_tz::America::New_York;
+const NY_TIMEZONE: Tz = chrono_tz::Europe::Moscow;
 
 /// Converts a Unix timestamp (milliseconds) into a UTC DateTime object for Postgres.
 /// (No change needed here as Unix timestamps are inherently UTC)
@@ -34,4 +34,5 @@ pub fn parse_ymd_hms_to_utc_datetime(s: &str) -> Result<DateTime<Utc>> {
     // 3. Convert the anchored NY time to the absolute UTC time.
     // This is the correct value to send to the PostgreSQL database.
     Ok(ny_datetime.with_timezone(&Utc))
+    
 }

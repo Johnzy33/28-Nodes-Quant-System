@@ -24,7 +24,7 @@ impl ProducerConfig {
                 .unwrap_or_else(|_| "localhost:9092".to_string()),
             
             kafka_topic_base: std::env::var("KAFKA_TOPIC_BASE")
-                .unwrap_or_else(|_| "market_data_raw".to_string()),
+                .unwrap_or_else(|_| "asset_market_data".to_string()),
 
             // CRITICAL FIX: Ensure asset-specific variables are read from the environment
             asset_symbol: std::env::var("ASSET_SYMBOL")

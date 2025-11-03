@@ -12,3 +12,4 @@ data_engine = { path = "../data_engine" }
 database_engine ={path = "../database_engine"}
 prediction_engine = { path = "../prediction_engine" }
 order_engine = { path = "../order_engine" }
+rdkafka = { version = "0.38.0", features = ["ssl", "tokio"] }

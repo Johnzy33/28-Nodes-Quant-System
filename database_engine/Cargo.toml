@@ -11,8 +11,10 @@ tokio-util = "0.7.16"
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rdkafka = { version = "0.38.0", features = ["tokio"] }
-deadpool-postgres =  "0.10"
+rdkafka = { version = "0.38.0", features = ["tokio", "ssl"] }
+deadpool-postgres =  "0.14"
 chrono = { workspace = true }
 dotenvy = { workspace = true }
-chrono-tz = "0.1"
+chrono-tz = {workspace = true }
+log = {workspace = true }
+env_logger = {workspace = true }
