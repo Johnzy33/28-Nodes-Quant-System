@@ -20,7 +20,7 @@ pub fn ts_to_utc_datetime(ts_ms: i64) -> Result<DateTime<Utc>> {
 /// Parses "YYYY.MM.DD HH:MM" and anchors it to New York Time (NYT) 
 /// before converting to UTC for the database.
 pub fn parse_ymd_hms_to_utc_datetime(s: &str) -> Result<DateTime<Utc>> {
-    let fmt = "%Y.%m.%d %H:%M";
+    let fmt = "%Y.%m.%d %H:%M:S";
     
     // 1. Parse the string into a NaiveDateTime (timezone-less).
     let naive = NaiveDateTime::parse_from_str(s, fmt)

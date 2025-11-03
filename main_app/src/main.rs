@@ -1,8 +1,6 @@
 use anyhow::{Result, Context};
 use std::time::Duration;
-use std::process; // Used for the process exit (though not strictly necessary with proper error returns)
 
-// Assuming these crates are configured in the Cargo.toml workspace
 use database_engine::{
     ingestion::run_consumer, 
     config::ConsumerConfig,
@@ -18,11 +16,10 @@ use data_engine::{
 async fn main() -> Result<()> {
     println!("Starting Full Trading System Pipeline Orchestrator...");
 
-    // 1. Load Configurations from environment (.env)
+    // 1. Load Configurations
     let consumer_config = ConsumerConfig::load()?;
     let producer_config = ProducerConfig::load()?;
 
-    // Clone the topic into an owned String so spawned tasks can use it without borrowing local config
     let kafka_topic = consumer_config.kafka_topic.clone();
 
     println!("Configuration Loaded:");
@@ -39,20 +36,18 @@ async fn main() -> Result<()> {
     let consumer_pool = pool.clone();
     let consumer_config_cloned = consumer_config.clone();
 
-    // 3. Spawn Consumer (runs indefinitely, must be spawned first to receive data)
+    // 3. Spawn Consumer (Runs indefinitely in background, now with batch logic)
     let consumer_handle = tokio::spawn(async move {
-        eprintln!("DEBUG: Consumer task started. Attempting to call run_consumer.");
-        // Run consumer, capture result
         let result = run_consumer(consumer_config_cloned, consumer_pool).await;
         
         match result {
             Ok(_) => {
                 println!("\n[CONSUMER] Graceful shutdown.");
-                Ok(()) // Explicitly return Ok(())
+                Ok(()) 
             }
             Err(e) => {
                 eprintln!("\n[CONSUMER] CRITICAL FAILURE: {:?}", e);
-                Err(e) // Return the original Err(e)
+                Err(e) 
             }
         }
     });
@@ -60,41 +55,35 @@ async fn main() -> Result<()> {
     // Wait a moment for the consumer to subscribe before starting the producer
     tokio::time::sleep(Duration::from_secs(2)).await;
     
-    // CRITICAL FIX: Clone the config for the producer before moving it into the closure
+    // CRITICAL: Clone the config for the producer
     let producer_config_cloned = producer_config.clone();
     
-    // 4. Spawn Producer (sends the historical CSV data, then exits)
+    // 4. Spawn Producer
     let producer_handle = tokio::spawn(async move {
-        // This ingests the data from the actual CSV file
-        match ingest_from_csv(producer_config_cloned).await { // Use the cloned config
+        match ingest_from_csv(producer_config_cloned).await {
             Ok(_) => {
                 println!("\n[PRODUCER] Historical Ingestion Complete. Data sent to topic: {}", kafka_topic);
-                Ok(()) // Explicitly return Ok(())
+                Ok(())
             }
             Err(e) => {
                 eprintln!("\n[PRODUCER] Critical Failure: {:?}", e);
-                Err(e) // Return the original Err(e)
+                Err(e)
             }
         }
     });
 
     // 5. Wait for the producer to finish
     let producer_join_result = producer_handle.await.context("Producer task failed during execution (join error)")?;
-    // CRITICAL: Check the result of the producer's internal execution
     producer_join_result.context("Producer reported internal error during ingestion")?;
 
 
-    // 6. Keep the consumer running until interrupted (Ctrl+C)
+    // 6. Report success and wait on the consumer for final failure/shutdown
     println!("\n=======================================================");
     println!("✅ STEP 4: DATA PIPELINE COMPLETE");
     println!("Raw historical data ingestion finished. Consumer is now running and waiting for real-time messages.");
     println!("=======================================================");
     
-    // The main process waits on the consumer forever. This will capture the failure 
-    // from the consumer_handle's inner execution.
     let consumer_join_result = consumer_handle.await.context("Consumer task crashed or failed to join")?;
-    
-    // CRITICAL: Check the result of the consumer's internal execution after joining the thread
     consumer_join_result.context("Consumer reported internal error after historical ingestion")?;
 
     Ok(())
