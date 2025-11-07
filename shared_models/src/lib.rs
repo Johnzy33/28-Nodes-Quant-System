@@ -5,7 +5,11 @@ pub mod csv_reader;
 pub mod time_utils;
 pub mod candle_pattern;
 pub mod pattern_classify;
+pub mod tcs_models;
+pub mod tcs_analysis_config;
 
+pub use tcs_analysis_config::*;
+pub use tcs_models::*;
 pub use candle_pattern::CandlePattern;
 pub use csv_reader::CsvRecord;
 pub use pattern_classify::*;

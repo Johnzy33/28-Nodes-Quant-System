@@ -8,6 +8,7 @@
 -------------------------------
 -- This CTE builds the session context for assets on a given trading date.
 TRUNCATE asset_session_context; -- Use generalized table name
+
 WITH sequenced_sessions AS (
     -- 1. Combine session details with a sequence number for each asset
     SELECT
@@ -23,7 +24,7 @@ WITH sequenced_sessions AS (
         END AS bias_7_state,
         -- Generate a unique sequence number for sessions within each asset
         ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY start_ts) AS session_num
-    FROM asset_session_views
+    FROM session_views
 ),
 context_pairs AS (
     -- 2. Use LAG window function to find PS1 and PS2 efficiently
@@ -77,7 +78,7 @@ context_keys AS (
     WHERE ps1_name IS NOT NULL
 )
 -- 4. Insert into the final context table
-INSERT INTO asset_session_context (
+INSERT INTO new_session_context (
     cs_ps1_fk, trading_date, asset_id, cs_name, cs_bias_3_state, 
     cs_bias_7_state, ps1_name, ps1_bias_3_state, ps1_bias_7_state, 
     ps2_name, ps2_bias_3_state, ps2_bias_7_state, ps2_ps1_fk, cs_ps2_fk
@@ -95,7 +96,7 @@ FROM context_keys;
 ----------------------------------
 -- This CTE extracts session-level data for assets on a given trading date.
 
-TRUNCATE asset_session_views; -- Use generalized table name
+TRUNCATE session_views; -- Use generalized table name
 
 WITH base AS (
   SELECT
@@ -104,7 +105,7 @@ WITH base AS (
     open, high,  low,  close, volume,
     custom_session_group(time) AS session_name,
     get_trading_date(time) AS trading_date
-  FROM asset_market_data -- <<< GENERALIZED TABLE NAME
+  FROM market_data -- <<< GENERALIZED TABLE NAME
 ),
 per_session AS (
   SELECT
@@ -145,7 +146,7 @@ classified AS (
     LEFT JOIN opens o USING (trading_date, asset_id, session_name)
     LEFT JOIN closes c USING (trading_date, asset_id, session_name)
 )
-INSERT INTO asset_session_views ( -- <<< GENERALIZED TABLE NAME
+INSERT INTO session_views ( -- <<< GENERALIZED TABLE NAME
     trading_date, asset_id, session_name, start_ts, end_ts, 
     open, high, high_ts, low, low_ts, close, volume, bars, 
     session_type, consolidation_subtype

@@ -169,7 +169,7 @@ WITH Weekly_Ranges AS (
         LAG(high, 1) OVER (PARTITION BY asset_id ORDER BY week_start) AS PWH,
         LAG(low, 1) OVER (PARTITION BY asset_id ORDER BY week_start) AS PWL,
         LAG(Weekly_Type, 1) OVER (PARTITION BY asset_id ORDER BY week_start) AS Prior_Weekly_Type 
-    FROM asset_weekly_views
+    FROM weekly_views
 ),
 Daily_Context_Base AS (
     -- 2. Establish daily context: PD_Type, PDH, PDL, DOW_Transition
@@ -180,7 +180,7 @@ Daily_Context_Base AS (
         LAG(high, 1) OVER (PARTITION BY asset_id ORDER BY trading_date) AS PDH,
         LAG(low, 1) OVER (PARTITION BY asset_id ORDER BY trading_date) AS PDL,
         LAG(dow, 1) OVER (PARTITION BY asset_id ORDER BY trading_date) || ' -> ' || dow AS DOW_Transition
-    FROM asset_daily_views
+    FROM daily_views
 ),
 D_M3_M4_Context AS (
     -- CTEs needed for D.M3/D.M4 Aggregation (using provided logic)

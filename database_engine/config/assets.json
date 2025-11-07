@@ -16,7 +16,7 @@
     "asset_class": "Index_Future",
     "currency": "USD",
     "exchange": "CME",
-    "source": "DuckasCopy"
+    "source": "FundedNext"
   },
   {
     "symbol": "UK100",
@@ -25,7 +25,7 @@
     "asset_class": "Index_Future",
     "currency": "GBP",
     "exchange": "ICE",
-    "source": "DuckasCopy"
+    "source": "FundedNext"
   },
   {
     "symbol": "JP225",
@@ -34,7 +34,7 @@
     "asset_class": "Index_Future",
     "currency": "JPY",
     "exchange": "OSE",
-    "source": "DuckasCopy"
+    "source": "FundedNext"
   },
   {
     "symbol": "SPX500",

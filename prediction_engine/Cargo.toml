@@ -1,6 +1,21 @@
 [package]
 name = "prediction_engine"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# Dependencies sourced from [workspace.dependencies]
+tokio = { workspace = true }
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+
+# Other necessary dependencies for data processing
+log = { workspace = true }
+env_logger = { workspace = true }
+
+#Local Dependencies
+database_engine = { path = "../database_engine" }
+shared_models = { path = "../shared_models" }

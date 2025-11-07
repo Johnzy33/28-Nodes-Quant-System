@@ -1,7 +1,5 @@
 use anyhow::{Result, Context, anyhow};
-// FIX: Ensure TimeZone is imported. Cleaned up imports to only include needed items.
 use chrono::{NaiveDateTime, Utc, TimeZone}; 
-
 use std::time::Duration;
 use rdkafka::{
     config::ClientConfig,
@@ -13,6 +11,7 @@ use crate::{
     csv_reader::{CsvRecordStandard, CsvRecordBracketed}, 
     config::ProducerConfig,
 }; 
+// This line imports your critical time utility functions
 use shared_models::{market_data::MarketData, time_utils}; 
 use serde::de::DeserializeOwned; 
 use std::fs::File;
@@ -46,19 +45,16 @@ fn process_record(
     open: f64, high: f64, low: f64, close: f64, volume: f64
 ) -> Result<MarketData> {
     
-    // ... (Cleaning and parsing logic remains the same)
+    // 1. Prepare raw date/time string
     let cleaned_date: String = date.trim().chars().filter(|c| c.is_ascii()).collect();
     let cleaned_time: String = time.trim().chars().filter(|c| c.is_ascii()).collect();
     let dt_str = format!("{} {}", cleaned_date, cleaned_time); 
     
-    let format = "%Y.%m.%d %H:%M:%S";
-    
-    let naive_dt = NaiveDateTime::parse_from_str(&dt_str, format)
-        .context(format!("Failed to parse date/time string '{}' with format '{}'", dt_str, format))?;
-
-    // FIX: Removed the problematic `from_naive_datetime_opt` call.
-    // We use the simpler, recognized method to convert NaiveDateTime to a UTC DateTime.
-    let ts_ms: i64 = Utc.from_utc_datetime(&naive_dt)
+    // 💥 THE CRITICAL FIX: Reverting the erroneous logic. 
+    // We must call time_utils::parse_ymd_hms_to_utc_datetime. This function 
+    // knows the raw string is in Europe::Athens time and correctly converts it to UTC.
+    let ts_ms = time_utils::parse_ymd_hms_to_utc_datetime(&dt_str)
+        .context("Failed to parse date/time string; check if time_utils anchors to Athens time.")?
         .timestamp_millis();
         
     Ok(MarketData {
@@ -84,11 +80,13 @@ pub async fn ingest_from_csv(config: ProducerConfig) -> Result<()> {
     // Use a robust reader for the initial check (assuming one of two delimiters)
     let mut temp_reader = ReaderBuilder::new()
         .has_headers(true)
+        // Check for tab-delimited first, as bracketed files often use tabs
+        .delimiter(b'\t') 
         .from_reader(file); 
         
     let headers = temp_reader.headers()?.clone();
 
-    // Check for bracketed format by trimming and checking if any header starts/ends with <>
+    // Check for bracketed format
     let is_bracketed = headers.iter()
         .any(|h| h.trim().starts_with('<') && h.trim().ends_with('>'));
 
@@ -110,10 +108,7 @@ async fn ingest_generic<T>(config: ProducerConfig, delimiter: u8) -> Result<()>
 where 
     T: DeserializeOwned + CsvMapping, // T must be Deserializable and implement our trait
 {
-    // 2. SETUP
-    let asset_id = format!("assets:{}:{}", config.asset_symbol, config.data_source_id);
-    let kafka_topic = format!("{}_{}", config.asset_symbol.to_lowercase(), config.kafka_topic_base);
-
+    
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", &config.kafka_brokers)
         .set("message.timeout.ms", "5000")
@@ -128,6 +123,9 @@ where
         // Crucial: trims whitespace from headers and fields during deserialization
         .trim(Trim::All) 
         .from_path(&config.file_path)?;
+
+    let asset_id = config.get_asset_id();
+    let kafka_topic = &config.kafka_topic; 
     
     let mut total_records = 0;
     
@@ -142,7 +140,7 @@ where
         let key = format!("{}:{}", market_data.asset_id, market_data.ts); 
         
         let delivery_result = producer
-            .send(FutureRecord::to(&kafka_topic).payload(&payload).key(&key), Duration::from_secs(0))
+            .send(FutureRecord::to(kafka_topic).payload(&payload).key(&key), Duration::from_secs(0))
             .await;
             
         if let Err((e, _)) = delivery_result {

@@ -4,12 +4,14 @@ members = [
   "data_engine",
   "prediction_engine",
   "order_engine",
-  "main_app", "database_engine", "shared_models",
+  "main_app", 
+  "database_engine", 
+  "shared_models",
 ]
 
 [workspace.dependencies]
 tokio = { version = "1.48", features = ["full"] }
-tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-0_8"] } # Added with-uuid-0_8
 serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["alloc", "serde"] }
 serde_json = "1.0"
@@ -19,7 +21,7 @@ tokio-util = {version = "0.7", features = ["full"]}
 futures-util = "0.3.31"
 rdkafka = { version = "0.29.0", features = ["ssl", "tokio","default"] }
 csv = "1.2"
-deadpool-postgres = { version = "0.14.1", features = [ "serde",] }
+deadpool-postgres = { version = "0.14.1", features = [ "serde", "rt_tokio_1"] } # Added rt_tokio_1
 dotenvy = "0.15"
 log = "0.4"
 env_logger = "0.11"

@@ -1,9 +1,9 @@
 -------------
 -- Table: Weekly
 -------------
-DROP TABLE IF EXISTS asset_weekly_views CASCADE;
+DROP TABLE IF EXISTS weekly_views CASCADE;
 
-CREATE TABLE asset_weekly_views (
+CREATE TABLE weekly_views (
     week_start DATE NOT NULL,
     asset_id TEXT NOT NULL,
     -- Temporal/Categorical W.Mn Inputs
@@ -38,7 +38,7 @@ CREATE TABLE asset_weekly_views (
 );
 
 
-TRUNCATE TABLE asset_weekly_views
+TRUNCATE TABLE weekly_views
 
 INSERT INTO asset_weekly_views (
     week_start, asset_id, Month_of_Year, open, high, low, close, volume, bars, 
@@ -59,7 +59,7 @@ WITH weekly_aggregate AS (
         SUM(d.bars) AS bars_sum,
         MAX(d.high) - MIN(d.low) AS Current_Weekly_Range,
         AVG(a.daily_atr) AS Weekly_ATR 
-    FROM asset_daily_views d
+    FROM daily_views d
     JOIN asset_daily_atr_14d a ON a.asset_id = d.asset_id AND a.trading_date = d.trading_date
     GROUP BY 1, 2
 ),
@@ -75,7 +75,7 @@ dow_to_index AS (
     -- 3. Helper CTE to map the text DOW to a numeric index
     SELECT trading_date, asset_id, "open", high, low,
         CASE d.dow WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3 WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 ELSE 99 END AS dow_index 
-    FROM asset_daily_views d
+    FROM daily_views d
 ),
 high_low_metadata AS (
     -- 4. Find the exact high/low timestamps and sessions
@@ -88,7 +88,7 @@ high_low_metadata AS (
         (ARRAY_AGG(d.low_ts ORDER BY d.low ASC))[1] AS low_ts,
         (ARRAY_AGG(d.low_session ORDER BY d.low ASC))[1] AS low_session
     FROM weekly_aggregate w
-    JOIN asset_daily_views d ON d.asset_id = w.asset_id AND DATE_TRUNC('week', d.trading_date) = w.week_start
+    JOIN daily_views d ON d.asset_id = w.asset_id AND DATE_TRUNC('week', d.trading_date) = w.week_start
     GROUP BY 1, 2
 ),
 break_metrics AS (

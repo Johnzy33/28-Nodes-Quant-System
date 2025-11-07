@@ -15,7 +15,8 @@ CREATE SEQUENCE IF NOT EXISTS ps_cs_pattern_fk_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS ps2_ps1_fk_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS cs_ps2_fk_seq START 1;
 
-CREATE TABLE IF NOT EXISTS asset_session_context (
+CREATE TABLE IF NOT EXISTS session_context 
+(
     -- NEW: The unique Primary Key for every single historical session record
     session_record_pk BIGINT NOT NULL,
     -- RENAMED: This is the ID for the Pattern TYPE (used for joining/grouping in metrics)
@@ -64,7 +65,7 @@ WITH sequenced_sessions AS (
             ELSE 'Other' 
         END AS bias_7_state,
         ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY start_ts) AS session_num
-    FROM asset_session_views
+    FROM session_views
 ),
 context_pairs AS (
     -- Use LAG to create every historical pattern instance (PS2 -> PS1 -> CS)
@@ -128,7 +129,7 @@ final_unique_keys AS (
 -- ---------------------------------------------------------------------------------------------------------------------------------
 -- STAGE 3: Final Insert (Join the Unique Pattern Keys back to the full history)
 -- ---------------------------------------------------------------------------------------------------------------------------------
-INSERT INTO asset_session_context (
+INSERT INTO session_context (
     session_record_pk, ps_cs_pattern_fk, ps2_ps1_fk, cs_ps2_fk,
     trading_date, asset_id, cs_name, cs_bias_3_state, 
     cs_bias_7_state, ps1_name, ps1_bias_3_state, ps1_bias_7_state, 

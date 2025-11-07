@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+// pub mod metrics_service;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// pub use metrics_service::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod data_fetch_hold;
+pub  mod prediction_processor;
+pub mod data_fetcher;
+pub mod analysis_core;
+
+pub use analysis_core::*;
+pub use data_fetcher::*;
+pub use prediction_processor::*;
+pub use data_fetch_hold::fetch_prediction_data;

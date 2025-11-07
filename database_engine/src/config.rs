@@ -25,7 +25,7 @@ impl ConsumerConfig {
                 .unwrap_or_else(|_| "db_ingestion_group".to_string()),
             
             // CRITICAL: The consumer's specific topic MUST be explicitly set
-            kafka_topic: std::env::var("KAFKA_TOPIC")
+            kafka_topic: std::env::var("KAFKA_TOPICS")
                 .context("KAFKA_TOPIC must be set in the environment or .env file.")?,
             
             db_url: std::env::var("DATABASE_URL")

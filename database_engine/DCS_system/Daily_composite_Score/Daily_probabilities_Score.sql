@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS asset_daily_composite_score (
 );
 TRUNCATE TABLE asset_daily_composite_score;
 WITH Metrics_Snapshot_Lookup AS (
+    SELECT
         D.trading_date, 
         D.asset_id,
         S.Prior_Weekly_Type, 
@@ -31,7 +32,7 @@ WITH Metrics_Snapshot_Lookup AS (
         S.D_M3_Continuation_Prob,
         S.D_M4_Bullish_FT_Prob,
         S.D_M4_Bearish_FT_Prob
-    FROM asset_daily_views D
+    FROM daily_views D
     -- Join to the assumed pre-calculated metrics snapshot table
     INNER JOIN asset_daily_metrics_snapshot S 
         ON S.asset_id = D.asset_id 

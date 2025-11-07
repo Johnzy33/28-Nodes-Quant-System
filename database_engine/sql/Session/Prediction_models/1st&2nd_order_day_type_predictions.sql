@@ -26,7 +26,7 @@ WITH daily_outcome_7_state AS (
             WHEN day_type = 'Consolidation' THEN consolidation_subtype
             ELSE 'Other' 
         END AS daily_outcome_7
-    FROM asset_daily_views
+    FROM daily_views
     WHERE day_type IS NOT NULL 
 ),
 context_map AS (

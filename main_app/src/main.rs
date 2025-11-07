@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::{Result, Context, anyhow};
 use std::time::Duration;
 
 use database_engine::{
@@ -18,7 +18,8 @@ async fn main() -> Result<()> {
 
     // 1. Load Configurations
     let consumer_config = ConsumerConfig::load()?;
-    let producer_config = ProducerConfig::load()?;
+    let producer_config = ProducerConfig::load()
+        .map_err(|e| anyhow!("Failed to load Producer configuration from environment: {}", e))?;
 
     let kafka_topic = consumer_config.kafka_topic.clone();
 

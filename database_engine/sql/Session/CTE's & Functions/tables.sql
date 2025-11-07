@@ -1,5 +1,8 @@
 -- RENAME: Moving away from the hardcoded US2000 name
-CREATE TABLE asset_market_data (
+
+DROP TABLE market_data;
+
+CREATE TABLE market_data (
     time timestamp with time zone NOT NULL,
     asset_id text NOT NULL,
     "open" double precision NOT NULL,
@@ -12,15 +15,18 @@ CREATE TABLE asset_market_data (
     FOREIGN KEY (asset_id) REFERENCES assets(id)
 );
 -- Update Index names for generalization
-CREATE INDEX asset_market_data_time_idx ON public.asset_market_data USING btree ("time" DESC);
-CREATE INDEX idx_asset_id ON public.asset_market_data USING btree (asset_id);
+CREATE INDEX market_data_time_idx ON public.market_data USING btree ("time" DESC);
+
+DROP INDEX idx_asset_id;
+
+CREATE INDEX idx_asset_id ON public.market_data USING btree (asset_id);
 
 ---------------------------------
 -- Session Context Table
 ---------------------------------
 
-DROP TABLE IF EXISTS asset_session_context CASCADE;
-CREATE TABLE IF NOT EXISTS asset_session_context (
+DROP TABLE IF EXISTS new_session_context CASCADE;
+CREATE TABLE IF NOT EXISTS new_session_context (
     -- Primary Context (CS is the focus session for prediction)
     cs_ps1_fk BIGINT NOT NULL,          -- PK for PS1 -> CS link
     trading_date DATE NOT NULL,
@@ -55,8 +61,8 @@ TRUNCATE asset_session_context;
 --------------------------------
 -- Session Views Table
 --------------------------------
-DROP TABLE IF EXISTS asset_session_views;
-CREATE TABLE asset_session_views (
+DROP TABLE IF EXISTS session_views;
+CREATE TABLE session_views (
     trading_date date NOT NULL,
     asset_id text NOT NULL,
     session_name text NOT NULL,
@@ -74,6 +80,6 @@ CREATE TABLE asset_session_views (
     -- Foreign Key Constraint
     FOREIGN KEY (asset_id) REFERENCES assets(id)
 );
-TRUNCATE asset_session_views;
+TRUNCATE session_views;
 
 
