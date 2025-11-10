@@ -41,21 +41,14 @@ BEGIN
     RAISE NOTICE '--- PHASE 1 COMPLETE ---';
 
     -- ###############################################################
-    -- # PHASE 2: REFRESH ALL CONFIDENCE METRICS (TCS, PCS, CCM)
+    -- # PHASE 2: REFRESH ALL CORE METRICS METRICS (TCS, PCS, TCS_Cont, FCI)
     -- ###############################################################
-    RAISE NOTICE '--- PHASE 2: CALCULATING CONFIDENCE METRICS (TCS/PCS/CCM) ---';
+    RAISE NOTICE '--- PHASE 2: CALCULATING CONFIDENCE METRICS (TCS/PCS/FCI) ---';
 
     -- 7. Refresh TCS (Transition Confidence Score) - Relies on session_context
-    RAISE NOTICE '2.1: Executing refresh_tcs_metrics()...';
-    CALL refresh_tcs_metrics();
+    RAISE NOTICE '2.1: Executing refresh_metrics_pipeline...';
+    CALL refresh_metrics_pipeline();
 
-    -- 8. Refresh PCS (Predictive Confidence Score) - Relies on session_context
-    RAISE NOTICE '2.2: Executing refresh_pcs_metrics()...';
-    --CALL refresh_pcs_metrics();
-    
-    -- 9. Refresh CCM (Combined Confidence Metric) - Relies on TCS and PCS
-    RAISE NOTICE '2.3: Executing refresh_ccm_metrics()...';
-   -- CALL refresh_ccm_metrics();
 
     RAISE NOTICE '--- PHASE 2 COMPLETE ---';
 

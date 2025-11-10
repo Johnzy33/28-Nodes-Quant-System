@@ -26,4 +26,5 @@ target
 *.db
 *.lock
 *.surql
+*.sql
 /trading_system_db
