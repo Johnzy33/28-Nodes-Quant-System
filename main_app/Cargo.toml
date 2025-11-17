@@ -8,8 +8,13 @@ tokio = { workspace = true }
 anyhow ={workspace = true}
 deadpool-postgres = { workspace = true }
 tokio-postgres = { workspace = true }
+log={workspace = true}
+env_logger = {workspace = true}
+rdkafka = { workspace = true}
+dotenvy = {workspace = true}
+
+
 data_engine = { path = "../data_engine" }
 database_engine ={path = "../database_engine"}
 prediction_engine = { path = "../prediction_engine" }
 order_engine = { path = "../order_engine" }
-rdkafka = { version = "0.38.0", features = ["ssl", "tokio"] }

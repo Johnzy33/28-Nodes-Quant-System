@@ -31,6 +31,8 @@ CALL refresh_session_views();
 CREATE OR REPLACE PROCEDURE refresh_session_views()
 LANGUAGE sql
 AS $$
+
+TRUNCATE session_views;
 WITH classified AS (
     -- Read from Layer 1 MV and apply the classification function
     SELECT

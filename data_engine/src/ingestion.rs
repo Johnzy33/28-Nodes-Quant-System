@@ -6,10 +6,10 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
     producer::Producer as KafkaProducer, 
 };
+use database_engine::producer_config::ProducerConfig;
 use csv::{ReaderBuilder, Trim}; 
 use crate::{
     csv_reader::{CsvRecordStandard, CsvRecordBracketed}, 
-    config::ProducerConfig,
 }; 
 // This line imports your critical time utility functions
 use shared_models::{market_data::MarketData, time_utils}; 
@@ -92,11 +92,11 @@ pub async fn ingest_from_csv(config: ProducerConfig) -> Result<()> {
 
     // Determine which concrete struct type to use
     if is_bracketed {
-        println!("INFO: Detected BRACKETED CSV format. Using CsvRecordBracketed.");
+       // println!("INFO: Detected BRACKETED CSV format. Using CsvRecordBracketed.");
         // Bracketed format uses TAB ('\t')
         ingest_generic::<CsvRecordBracketed>(config, b'\t').await
     } else {
-        println!("INFO: Detected STANDARD CSV format. Using CsvRecordStandard.");
+        //println!("INFO: Detected STANDARD CSV format. Using CsvRecordStandard.");
         // Standard format usually uses COMMA (',')
         ingest_generic::<CsvRecordStandard>(config, b',').await
     }
@@ -153,6 +153,6 @@ where
     producer.flush(Duration::from_secs(10))
         .context("Failed to flush remaining Kafka messages")?;
     
-    println!("\n✅ Ingestion complete. Total records produced: {}", total_records);
+  //  println!("\n✅ Ingestion complete. Total records produced: {}", total_records);
     Ok(())
 }

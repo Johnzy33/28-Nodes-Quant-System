@@ -8,13 +8,14 @@ use rdkafka::{
 };
 use deadpool_postgres::Pool;
 use shared_models::{market_data::MarketData, time_utils};
-use crate::config::ConsumerConfig;
+use crate::producer_config::{IngestionCoordinatorConfig, ProducerConfig}; // Added ProducerConfig just in case
 use anyhow::{Context, Result}; 
 use std::time::Duration; 
 use futures::StreamExt;
 use tokio_postgres::types::{ToSql, Type}; 
 use deadpool_postgres::Client;
-
+use std::env;
+use std::collections::HashMap; // Used for fast lookup of Topic -> Asset ID
 
 // --- BATCH INSERT IMPLEMENTATION ---
 
@@ -29,7 +30,6 @@ async fn execute_batch(client: &mut Client, batch: &mut Vec<MarketData>, sql_tem
     let batch_size = batch.len();
     let mut sql = String::from(sql_template);
     
-    // The parameters must be Send + Sync to be used across async boundaries
     let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::new(); 
 
     let transaction = client.transaction().await.context("Failed to begin transaction")?;
@@ -59,7 +59,7 @@ async fn execute_batch(client: &mut Client, batch: &mut Vec<MarketData>, sql_tem
         params.push(Box::new(data.volume));
     }
 
-    // 💥 FINAL FIX: Append ON CONFLICT DO UPDATE SET to handle re-running historical data and update non-key fields.
+    // Append ON CONFLICT DO UPDATE SET
     sql.push_str(r#" 
         ON CONFLICT ("time", asset_id) DO UPDATE SET
             open = EXCLUDED.open,
@@ -79,29 +79,19 @@ async fn execute_batch(client: &mut Client, batch: &mut Vec<MarketData>, sql_tem
         .context("Failed to prepare multi-row INSERT statement")?;
 
     // 3. Execute and Commit
-    // Collect the references with the necessary bounds (Send + Sync).
     let references: Vec<&(dyn ToSql + Sync + Send)> = params.iter().map(|b| b.as_ref()).collect();
-    
-    // Map the Send+Sync references to the Sync-only references required by tokio-postgres 
     let final_references: Vec<&(dyn ToSql + Sync)> = references.iter()
-        .map(|r| *r as &(dyn ToSql + Sync)) // Downcast the trait object reference
+        .map(|r| *r as &(dyn ToSql + Sync))
         .collect();
     
-    // Use the new final_references slice
     let rows_affected = transaction.execute(&statement, final_references.as_slice()).await
         .context("Failed to execute batch insert statement")?;
 
     transaction.commit().await
         .context("Failed to commit transaction. Data might be invalid or connection lost.")?;
         
-    // NOTE: For DO UPDATE, rows_affected will be: 
-    // New Inserts: 1 
-    // Updates: 1 (if data was changed)
-    // No-op updates: 0 (if data was identical)
-    // We log the result regardless.
     info!("Batch processed {} record(s) (inserts or updates)", rows_affected);
     
-    // Clear the batch for the next run
     batch.clear();
 
     Ok(rows_affected)
@@ -123,39 +113,60 @@ async fn commit_offset(consumer: &StreamConsumer, last_message: &BorrowedMessage
 }
 
 
-// --- MAIN CONSUMER LOOP ---
+// --- MAIN MULTI-TOPIC CONSUMER LOOP ---
 
 /// Main asynchronous consumer loop for Kafka to TimescaleDB ingestion.
-pub async fn run_consumer(config: ConsumerConfig, pool: Pool) -> Result<()> {
+/// It subscribes to ALL topics defined in the INGESTION_CONFIG_PATH file.
+pub async fn run_multi_topic_consumer(pool: Pool) -> Result<()> {
     
-    let asset_symbol = config.kafka_topic
-        .split('_')
-        .next()
-        .context("Invalid Kafka topic format")?
-        .to_uppercase();
-    let injected_asset_id = format!("assets:{}:{}", asset_symbol, "FundedNext"); 
-    
-    // ClientConfig setup
+    // 1. Load ALL configuration and determine all topics to subscribe to.
+    let config_path = env::var("INGESTION_CONFIG_PATH")
+        .context("CRITICAL: Environment variable INGESTION_CONFIG_PATH must be set to the config file path.")?;
+        
+    let coordinator_config = IngestionCoordinatorConfig::load_from_file(&config_path)
+        .context(format!("Failed to load config from: {}", config_path))?;
+        
+    // Build a list of all required topics (Vec<&str>)
+    let topic_strings: Vec<String> = coordinator_config.assets
+        .iter()
+        .map(|job| format!("{}_{}", job.symbol.to_lowercase(), job.topic_base))
+        .collect(); // Collect the owned Strings into the new variable
+
+    // Build a list of all required topics (Vec<&str>)
+    let topics: Vec<&str> = topic_strings // Now we iterate over the long-lived variable
+        .iter()
+        .map(|s| s.as_str()) // Get the &str references
+        .collect();
+        
+    // 2. Build the Asset ID Map for fast lookup (Topic name -> Asset ID)
+    let asset_id_map: HashMap<String, String> = coordinator_config.assets
+        .into_iter()
+        .map(|job| {
+            let topic = format!("{}_{}", job.symbol.to_lowercase(), job.topic_base);
+            let asset_id = format!("assets:{}:{}", job.symbol.to_uppercase(), coordinator_config.data_source_id);
+            (topic, asset_id)
+        })
+        .collect();
+
+    // 3. ClientConfig setup
     let consumer: StreamConsumer = ClientConfig::new()
-        // Stable Group ID for production. Offset must be reset externally for historical re-runs.
         .set("group.id", "final_batch_run_1") 
         .set("bootstrap.servers", "127.0.0.1:9092")
         .set("security.protocol", "plaintext") 
         .set("metadata.request.timeout.ms", "10000") 
         .set("queued.max.messages.kbytes", "1048576") 
-        .set("enable.auto.commit", "false") // CRITICAL for transactional batching
+        .set("enable.auto.commit", "false")
         .set("auto.offset.reset", "earliest")
         .create()
         .context("Consumer creation error")?;
         
-    consumer.subscribe(&[&config.kafka_topic])
-        .context("Failed to subscribe to Kafka topic")?;
+    // 💥 SUBSCRIBE TO ALL TOPICS AT ONCE
+    consumer.subscribe(&topics) 
+        .context("Failed to subscribe to Kafka topics")?;
     
-    info!("Consumer subscribed to topic: {}", config.kafka_topic);
+    info!("Consumer subscribed to topics: {:?}", topics);
 
-    // This template is just the start of the SQL statement.
     let sql_template = String::from("INSERT INTO market_data (time, asset_id, open, high, low, close, volume) VALUES ");
-    
     const BATCH_SIZE: usize = 100;
     let mut batch: Vec<MarketData> = Vec::with_capacity(BATCH_SIZE);
     let mut last_message: Option<BorrowedMessage<'_>> = None; 
@@ -176,9 +187,21 @@ pub async fn run_consumer(config: ConsumerConfig, pool: Pool) -> Result<()> {
                 
                 // Process the received message
                 if let Some(payload) = msg.payload() {
+                    
+                    // CRUCIAL: Determine asset ID based on message topic
+                    let topic_name = msg.topic();
+                    let injected_asset_id = match asset_id_map.get(topic_name) {
+                        Some(id) => id.clone(),
+                        None => {
+                            error!("Received message from unknown topic: {}", topic_name);
+                            continue; // Skip this message
+                        }
+                    };
+
                     match serde_json::from_slice::<MarketData>(payload) {
                         Ok(mut market_data) => {
-                            market_data.asset_id = injected_asset_id.clone();
+                            // INJECT THE CORRECT ASSET ID
+                            market_data.asset_id = injected_asset_id; 
                             batch.push(market_data);
                             last_message = Some(msg); 
                             
@@ -222,7 +245,6 @@ pub async fn run_consumer(config: ConsumerConfig, pool: Pool) -> Result<()> {
 
     // Final flush of any remaining messages before consumer shutdown
     if !batch.is_empty() {
-        // Rerun flush logic
         info!("Final stream terminated. Flushing final batch of size {}.", batch.len());
         match execute_batch(&mut db_client, &mut batch, &sql_template).await {
             Ok(rows) => {
@@ -238,3 +260,6 @@ pub async fn run_consumer(config: ConsumerConfig, pool: Pool) -> Result<()> {
     
     Ok(()) 
 }
+
+// NOTE: You must update the caller (your consumer application's main.rs)
+// to call run_multi_topic_consumer(pool).await;

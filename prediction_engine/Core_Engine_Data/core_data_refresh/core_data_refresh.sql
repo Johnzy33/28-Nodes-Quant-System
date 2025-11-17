@@ -32,6 +32,7 @@ BEGIN
 
     -- 5. Call Daily Views Refresh Procedure
     RAISE NOTICE '1.5: Calling refresh_daily_views()...';
+    
     CALL refresh_daily_views();
 
     -- 6. Call Weekly Views Refresh Procedure
@@ -55,19 +56,19 @@ BEGIN
     -- ###############################################################
     -- # PHASE 3: REFRESH ALL DCS METRICS (DAILY SCORES)
     -- ###############################################################
-    RAISE NOTICE '--- PHASE 3: CALCULATING DAY COUNT SCORES (DCS) ---';
+    -- RAISE NOTICE '--- PHASE 3: CALCULATING DAY COUNT SCORES (DCS) ---';
 
-    -- 10. Update/Calculate historical data used as the base for all daily metrics.
-    RAISE NOTICE '3.1: Calling update_dbs_history()...';
-    CALL update_dbs_history();
+    -- -- 10. Update/Calculate historical data used as the base for all daily metrics.
+    -- RAISE NOTICE '3.1: Calling update_dbs_history()...';
+    -- CALL update_dbs_history();
 
-    -- 11. Refresh the daily metrics snapshot using the updated history.
-    RAISE NOTICE '3.2: Calling refresh_daily_metrics_snapshot()...';
-    CALL refresh_daily_metrics_snapshot();
+    -- -- 11. Refresh the daily metrics snapshot using the updated history.
+    -- RAISE NOTICE '3.2: Calling refresh_daily_metrics_snapshot()...';
+    -- CALL refresh_daily_metrics_snapshot();
 
-    -- 12. Calculate the final daily composite score using the refreshed snapshot.
-    RAISE NOTICE '3.3: Calling refresh_daily_composite_score()...';
-    CALL refresh_daily_composite_score();
+    -- -- 12. Calculate the final daily composite score using the refreshed snapshot.
+    -- RAISE NOTICE '3.3: Calling refresh_daily_composite_score()...';
+    -- CALL refresh_daily_composite_score();
 
     RAISE NOTICE '--- PHASE 3 COMPLETE ---';
     

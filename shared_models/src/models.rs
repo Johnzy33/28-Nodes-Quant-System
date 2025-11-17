@@ -1,125 +1,52 @@
-use serde::{Deserialize, Serialize};
-use tokio_postgres::Row;
-use std::collections::HashMap;
+// shared_models/src/models.rs
 
+use chrono::NaiveDate;
+use sqlx::FromRow;
+use serde::Serialize; 
 
-// --- Helper struct to represent a single key prediction point ---
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PredictionPoint {
-    pub bias: String,
-    pub score: f64,
-    pub label: String,
-    pub conditional_prob: f64,
-    pub base_prob: f64, // Added P_base for better context
-}
-
-// --- TCS 1ST ORDER DATA ---
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tcs1stOrderData {
-    pub asset_id: String,
-    pub lookback_period: String,
-    pub ps1_name: String,
-    pub ps1_bias: String, // 7-state bias
-    pub cs_name: String,
-    pub cs_bias: String, // 7-state bias
-    pub p_transition_conditional: f64,
-    pub p_cs_base: f64,
-    pub tcs_score: f64,
-}
-
-impl Tcs1stOrderData {
-    /// Maps a tokio_postgres::Row to Tcs1stOrderData (for Query B1).
-    pub fn from_row(row: &Row) -> Self {
-        Tcs1stOrderData {
-            asset_id: row.get("asset_id"),
-            lookback_period: row.get("lookback_period"),
-            ps1_name: row.get("ps1_name"),
-            ps1_bias: row.get("ps1_bias"),
-            cs_name: row.get("cs_name"),
-            cs_bias: row.get("cs_bias"),
-            p_transition_conditional: row.get("p_transition_conditional"),
-            p_cs_base: row.get("p_cs_base"),
-            tcs_score: row.get("tcs_score"),
-        }
-    }
-}
-
-// --- TCS 2ND ORDER DATA ---
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tcs2ndOrderData {
-    pub asset_id: String,
-    pub lookback_period: String,
-    pub ps2_name: String,
-    pub ps2_bias: String, // 7-state bias
-    pub ps1_name: String,
-    pub ps1_bias: String, // 7-state bias
-    pub cs_name: String,
-    pub cs_bias: String, // 7-state bias
-    pub p_transition_conditional: f64,
-    pub p_cs_base: f64,
-    pub tcs_score: f64,
-}
-
-impl Tcs2ndOrderData {
-    /// Maps a tokio_postgres::Row to Tcs2ndOrderData (for Query B2).
-    pub fn from_row(row: &Row) -> Self {
-        Tcs2ndOrderData {
-            asset_id: row.get("asset_id"),
-            lookback_period: row.get("lookback_period"),
-            ps2_name: row.get("ps2_name"),
-            ps2_bias: row.get("ps2_bias"),
-            ps1_name: row.get("ps1_name"),
-            ps1_bias: row.get("ps1_bias"),
-            cs_name: row.get("cs_name"),
-            cs_bias: row.get("cs_bias"),
-            p_transition_conditional: row.get("p_transition_conditional"),
-            p_cs_base: row.get("p_cs_base"),
-            tcs_score: row.get("tcs_score"),
-        }
-    }
-}
-
-
-// Struct to hold the summary report for one TCS metric (e.g., 1st Order, 1Y lookback)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TcsLookbackSummary {
-    pub lookback_period: String,
-    pub strongest_edge: PredictionPoint,
-    pub most_likely: PredictionPoint,
-    pub strongest_veto: PredictionPoint,
-}
-
-// Struct to hold the comparison result between TCS1 and TCS2
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CrossOrderComparison {
-    pub lookback_period: String,
-    pub predicted_cs_bias: String,
-    
-    pub tcs_1st_order: f64,
-    pub tcs_2nd_order: f64,
-    pub delta: f64, // TCS_2nd - TCS_1st
-    
-    // Dynamic Session Info for Narrative
-    pub ps1_name: String,
-    pub ps2_name: String,
-    pub ps2_bias: String,
-    
-    // Narrative Interpretation
-    pub narrative_label: String,
-    pub explanation: String,
-}
-
-// The comprehensive final analysis report container.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TcsFinalReport {
+// Matches the 'assets' table schema
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct AssetInfo {
+    pub id: String,
     pub symbol: String,
-    pub analysis_date: String,
-    
-    // Structured Data Summaries
-    pub tcs1_summaries: HashMap<String, TcsLookbackSummary>, 
-    pub tcs2_summaries: HashMap<String, TcsLookbackSummary>, 
-    pub cross_order_comparisons: Vec<CrossOrderComparison>,
-    
-    // The final narrative output (Markdown)
-    pub final_markdown_report: String,
+    pub timezone: String,
+    pub source: String,
+    pub name: Option<String>,
+    pub asset_class: Option<String>,
+    pub currency: Option<String>,
+    pub exchange: Option<String>,
+    pub active: Option<bool>,
+}
+
+// Matches the output of get_trading_signal and get_signal_for_backtest_pattern
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct FciSignalOutput {
+    pub asset_id: Option<String>,
+    pub trading_date: Option<NaiveDate>,
+    pub ps2_name: Option<String>,
+    pub ps1_name: Option<String>,
+    pub ps2_bias: Option<String>,
+    pub ps1_bias: Option<String>,
+    pub cs_name: String,
+    pub predicted_day_type: String,
+    pub signal_direction: String,
+    pub fci_score: f64,
+    pub signal_confidence: String,
+    pub is_vetoed: bool,
+    pub pcs_anchor_score: f64,
+    pub tcs_multiplier: f64,
+    pub p_continuation_raw: Option<f64>,
+}
+
+// Matches the output of the daily_composite_score table/query
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct DcsScore {
+    pub trading_date: NaiveDate,
+    pub asset_id: String,
+    pub dcs: Option<f64>,
+    pub dcs_classification: Option<String>,
+    pub f_reversal: Option<f64>,
+    pub f_dm1_factor: Option<f64>,
+    pub f_commitment: Option<f64>,
+    pub f_sustainability: Option<f64>,
 }
