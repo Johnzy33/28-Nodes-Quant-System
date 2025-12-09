@@ -1,5 +1,4 @@
-use anyhow::{Result, Context, anyhow};
-use chrono::{NaiveDateTime, Utc, TimeZone}; 
+use anyhow::{Result, Context};
 use std::time::Duration;
 use rdkafka::{
     config::ClientConfig,
@@ -11,12 +10,12 @@ use csv::{ReaderBuilder, Trim};
 use crate::{
     csv_reader::{CsvRecordStandard, CsvRecordBracketed}, 
 }; 
-// This line imports your critical time utility functions
+
 use shared_models::{market_data::MarketData, time_utils}; 
 use serde::de::DeserializeOwned; 
 use std::fs::File;
 
-// --- Helper Trait and Implementations ---
+
 
 /// Defines the method required to convert any CSV record struct into the final MarketData struct.
 trait CsvMapping {
@@ -50,9 +49,7 @@ fn process_record(
     let cleaned_time: String = time.trim().chars().filter(|c| c.is_ascii()).collect();
     let dt_str = format!("{} {}", cleaned_date, cleaned_time); 
     
-    // 💥 THE CRITICAL FIX: Reverting the erroneous logic. 
-    // We must call time_utils::parse_ymd_hms_to_utc_datetime. This function 
-    // knows the raw string is in Europe::Athens time and correctly converts it to UTC.
+    
     let ts_ms = time_utils::parse_ymd_hms_to_utc_datetime(&dt_str)
         .context("Failed to parse date/time string; check if time_utils anchors to Athens time.")?
         .timestamp_millis();
@@ -92,11 +89,11 @@ pub async fn ingest_from_csv(config: ProducerConfig) -> Result<()> {
 
     // Determine which concrete struct type to use
     if is_bracketed {
-       // println!("INFO: Detected BRACKETED CSV format. Using CsvRecordBracketed.");
+       
         // Bracketed format uses TAB ('\t')
         ingest_generic::<CsvRecordBracketed>(config, b'\t').await
     } else {
-        //println!("INFO: Detected STANDARD CSV format. Using CsvRecordStandard.");
+        
         // Standard format usually uses COMMA (',')
         ingest_generic::<CsvRecordStandard>(config, b',').await
     }
@@ -153,6 +150,6 @@ where
     producer.flush(Duration::from_secs(10))
         .context("Failed to flush remaining Kafka messages")?;
     
-  //  println!("\n✅ Ingestion complete. Total records produced: {}", total_records);
+  
     Ok(())
 }
