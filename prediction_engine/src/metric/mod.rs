@@ -8,7 +8,7 @@ pub mod metric_build;
 pub mod metrics_context;
 pub mod metrics_service;
 pub mod metrics_fetch_ml;
-
+pub mod fetchable;
 
 
 

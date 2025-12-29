@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use anyhow::{Result};
 use log::{info, error};
 use tokio::task::JoinHandle;
-use data_engine::data_access::{ DataService};
+use data_engine::data_service::{ DataService};
 use futures_util::future::{join_all};
 use crate::metrics_service::MetricsService;
 
@@ -13,19 +13,19 @@ pub async fn asset_metrics_pipeline(pool: &PgPool, asset_id: &str) -> Result<()>
     let metric_service = MetricsService { pool: pool.clone() };
 
     //  Database Read 
-    let session_contexts = metric_service.fetch_session_contexts_for_ml(asset_id).await?;
+    let session_contexts = metric_service.fetch_session_contexts(asset_id).await?;
     if session_contexts.is_empty() {
         info!("No session contexts found for {}. Exiting.", asset_id);
         return Ok(());
     }
     
-    let bar_contexts = metric_service.fetch_bar_contexts_for_ml(asset_id).await?;
+    let bar_contexts = metric_service.fetch_bar_contexts(asset_id).await?;
     if bar_contexts.is_empty() {
         info!("No Eight Hours bar contexts found for {}. Exiting.", asset_id);
         return Ok(());
     }
 
-    let daily_contexts = metric_service.fetch_day_contexts_for_ml(asset_id).await?; 
+    let daily_contexts = metric_service.fetch_day_contexts(asset_id).await?; 
     if daily_contexts.is_empty() {
         info!("No daily contexts found for {}. Exiting.", asset_id);
         return Ok(());
