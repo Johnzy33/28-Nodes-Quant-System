@@ -97,29 +97,29 @@ impl DataService {
         info!("============================================================");
         // --L1: Process Sessions
         let (sessions, s_contexts) = self.calculate_session_and_context(asset_id).await?;
-        self.persist_batch(&sessions).await?;
-        self.persist_batch(&s_contexts).await?;
+        self.persist_data(&sessions).await?;
+        self.persist_data(&s_contexts).await?;
 
         // --L1.5: Process 8hr Blocks
         let (blocks, b_contexts) = self.calculate_8hr_context_and_blocks(asset_id).await?;
-        self.persist_batch(&blocks).await?;
-        self.persist_batch(&b_contexts).await?;
+        self.persist_data(&blocks).await?;
+        self.persist_data(&b_contexts).await?;
 
         // --L2: Process Daily
-        let daily = self.calculate_classified_daily_views(asset_id).await?;
-        self.persist_batch(&daily).await?;
+        let daily = self.daily_views(asset_id).await?;
+        self.persist_data(&daily).await?;
 
         // --L3: Process Weekly
-        let weekly = self.calculate_classified_weekly_views(asset_id).await?;
-        self.persist_batch(&weekly).await?;
+        let weekly = self.weekly_views(asset_id).await?;
+        self.persist_data(&weekly).await?;
 
         // --L4: Process Monthly
-        let monthly = self.calculate_classified_monthly_views(asset_id).await?;
-        self.persist_batch(&monthly).await?;
+        let monthly = self.monthly_views(asset_id).await?;
+        self.persist_data(&monthly).await?;
 
         // --L5: Process Yearly
-        let yearly = self.calculate_classified_yearly_views(asset_id).await?;
-        self.persist_batch(&yearly).await?; 
+        let yearly = self.yearly_views(asset_id).await?;
+        self.persist_data(&yearly).await?; 
 
         info!("============================================================");
         info!("MASTER ETL completed successfully for asset: {}", asset_id);
