@@ -1,14 +1,8 @@
 
-use anyhow::{anyhow, Result};
-use log::info;
-use chrono::{DateTime, Utc, Datelike, Duration, NaiveDate}; 
+use chrono::{DateTime, Utc, NaiveDate}; 
 use sqlx::{FromRow};
-use shared_models::candle_pattern::{get_market_classification}; 
-use shared_models::signal_type::{MarketType, MarketSubtype};
-use shared_models::models::{SessionContextData, EightContextData};
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use crate::data_service::DataService;
+use shared_models::signal_type::{MarketType};
+
 
 
 
@@ -205,23 +199,23 @@ pub struct ClassifiedWeeklyView {
 // ====================================================================
 
 /// Input data structure for the monthly views ETL (mirrors the necessary weekly_views fields).
-#[derive(Debug, sqlx::FromRow, Clone)]
-pub struct RawWeeklyView {
-    pub week_start: chrono::NaiveDate,
-    pub asset_id: String,
-    pub open: f64,
-    pub high: f64,
-    pub low: f64,
-    pub close: f64,
-    pub volume: i64,
-    pub bars: i64,
-    pub high_trading_date: chrono::NaiveDate,
-    pub high_ts: DateTime<Utc>,
-    pub high_session: String,
-    pub low_trading_date: chrono::NaiveDate,
-    pub low_ts: DateTime<Utc>,
-    pub low_session: String,
-}
+// #[derive(Debug, sqlx::FromRow, Clone)]
+// pub struct RawWeeklyView {
+//     pub week_start: chrono::NaiveDate,
+//     pub asset_id: String,
+//     pub open: f64,
+//     pub high: f64,
+//     pub low: f64,
+//     pub close: f64,
+//     pub volume: i64,
+//     pub bars: i64,
+//     pub high_trading_date: chrono::NaiveDate,
+//     pub high_ts: DateTime<Utc>,
+//     pub high_session: String,
+//     pub low_trading_date: chrono::NaiveDate,
+//     pub low_ts: DateTime<Utc>,
+//     pub low_session: String,
+// }
 
 // ====================================================================
 // 8. Classified Monthly View (Output - mirrors monthly_views table)

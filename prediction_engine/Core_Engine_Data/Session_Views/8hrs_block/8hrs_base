@@ -27,6 +27,9 @@ GROUP BY p.trading_date, p.asset_id, p.block_number
 -- Use a composite primary key index for fast lookups
 WITH DATA;
 
+CREATE UNIQUE INDEX eight_hr_base_time_asset_block_idx ON eight_hr_base (trading_date, asset_id, block_number);
+
+
 
 DROP TABLE block_context;
 CREATE TABLE block_context (
