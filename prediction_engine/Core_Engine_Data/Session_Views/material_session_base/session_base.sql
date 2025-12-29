@@ -9,7 +9,7 @@ WITH base AS (
   SELECT
     time, asset_id, open, high, low, close, volume,
     custom_session_group(time) AS session_name,
-    get_trading_date(time) AS trading_date
+    get_trading_day(time) AS trading_date
   FROM market_data
 )
 SELECT
@@ -33,5 +33,6 @@ SELECT
 FROM base p
 GROUP BY p.trading_date, p.asset_id, p.session_name;
 
+CREATE UNIQUE INDEX session_base_time_asset_session_idx ON session_base (trading_date, asset_id, session_name);
 -- After running this, always run:
 REFRESH MATERIALIZED VIEW session_base;

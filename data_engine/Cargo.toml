@@ -18,6 +18,14 @@ csv = { workspace = true }
 rdkafka = { workspace = true }
 serde_json = { workspace = true }
 dotenvy = {workspace = true}
+log = { workspace = true }
+env_logger = { workspace = true }
+deadpool-postgres =  {workspace = true}
+sqlx = {workspace = true}
+futures = {workspace = true}
+lazy_static = {workspace = true}
+
+
 
 # Local crate dependencies within the workspace
 database_engine = { path = "../database_engine" }

@@ -8,30 +8,32 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io::stdout;
 use std::time::Duration;
 use tokio::sync::mpsc::{self, Sender, Receiver};
+use dotenvy;
 
-// Imports from local modules
 mod tui; 
 use tui::state::{AppState, ActiveMode};
 use tui::renderer::render_ui;
 use tui::fci_module::handlers as fci_handlers; 
 use tui::data_refresh_module::handlers as refresh_handlers; 
 use tui::csv_ingest_module::handlers as csv_handlers; 
-use tui::events::{TuiEvent, HandleAction}; // HandleAction and TuiEvent (with new variant) are centralized
+use tui::events::{TuiEvent, HandleAction};
 
-// Imports from other crates in the workspace
 use database_engine::runtime::setup_database_pool; 
 use tui::queries; 
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 1. Terminal Setup
+    //  Terminal Setup
     stdout().execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-    // 2. Database Setup
+    dotenvy::dotenv().ok(); 
+
+    // Database Setup
     let pool = setup_database_pool().await?; 
     let mut app = AppState::new(pool); 
+
 
     // Fetch initial asset list asynchronously
     match queries::fetch_asset_list(&app.global.pool).await {
@@ -46,16 +48,16 @@ async fn main() -> Result<()> {
         }
     }
     
-    // 3. ASYNC TASK SETUP: MPSC Channel
+    // ASYNC TASK SETUP: MPSC Channel
     let (tx, mut rx): (Sender<TuiEvent>, Receiver<TuiEvent>) = mpsc::channel(100);
 
-    // 4. ASYNC EVENT POLLING TASK (listens for key presses and ticks)
+    //  ASYNC EVENT POLLING TASK (listens for key presses and ticks)
     tokio::spawn(poll_events_task(tx.clone()));
 
-    // 5. Main Application Loop
+    //  Main Application Loop
     let result = run_app_async(&mut terminal, &mut app, tx.clone(), &mut rx).await;
 
-    // 6. Terminal Teardown
+    //  Terminal Teardown
     stdout().execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     terminal.show_cursor()?; 
@@ -86,10 +88,10 @@ async fn run_app_async<B: ratatui::backend::Backend>(
     event_receiver: &mut Receiver<TuiEvent>,
 ) -> Result<()> {
     loop {
-        // A. Draw the UI
+        //  Draw the UI
         terminal.draw(|f| render_ui(f, app))?;
 
-        // B. Wait for the next event from the channel
+        //  Wait for the next event from the channel
         let event = event_receiver.recv().await;
         
         match event {
@@ -107,7 +109,7 @@ async fn run_app_async<B: ratatui::backend::Backend>(
                 app.data_refresh.log_history.push(msg); 
             }
             
-            // C. Handle Asynchronous Task Completions
+            //  Handle Asynchronous Task Completions
             Some(TuiEvent::DataRefreshCompleted(result)) => {
                 app.global.is_loading = false;
                 match result {
@@ -120,7 +122,7 @@ async fn run_app_async<B: ratatui::backend::Backend>(
                 }
             }
             
-            // 💥 NEW: Handle CSV Ingestion Completion (Final Message)
+            //  Handle CSV Ingestion Completion (Final Message)
             Some(TuiEvent::CsvIngestionCompleted(result)) => {
                 app.global.is_loading = false;
                 match result {
@@ -137,7 +139,7 @@ async fn run_app_async<B: ratatui::backend::Backend>(
                 }
             }
             
-            // 💥 NEW: Handle CSV Ingestion Status (Intermediate Asset Messages)
+            // Handle CSV Ingestion Status (Intermediate Asset Messages)
             Some(TuiEvent::CsvIngestionAssetStatus(msg)) => {
                 // 1. Update the main status line for immediate visual feedback
                 app.global.status_message = msg.clone(); 
@@ -178,7 +180,7 @@ async fn handle_key_input(key: KeyEvent, app: &mut AppState, event_sender: &Send
         ActiveMode::DataRefresh => refresh_handlers::handle_key_event(key, app, event_sender).await, 
         
         // Dispatch to new CSV Ingest handler
-        ActiveMode::CsvIngest => csv_handlers::handle_key_event(key, app, event_sender).await,
+      //  ActiveMode::CsvIngest => csv_handlers::handle_key_event(key, app, event_sender).await,
         
         ActiveMode::DcsSystem => { 
             app.global.status_message = format!("DCS System active. Key press: {:?}", key_code);

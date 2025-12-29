@@ -1,125 +1,221 @@
-use std::fmt;
+use crate::signal_type::{MarketClassification, MarketSubtype, MarketType}; // Import from signal_type.rs
+use std::f64;
 
-pub const DEFAULT_DOJI_BODY_RATIO: f64 = 0.1;
-pub const DEFAULT_BODY_WICK_RATIO_LONG: f64 = 0.5;
-pub const DEFAULT_BODY_WICK_RATIO_SHORT: f64 = 0.3;
-pub const DEFAULT_UPPER_VS_LOWER_RATIO: f64 = 0.6;
-pub const DEFAULT_EPS: f64 = 1e-9;
+// --- System Thresholds (Constants) ---
+const CONSOLIDATION_BODY_RATIO: f64 = 0.20;
+const OPPOSING_WICK_PRESSURE: f64 = 0.40;
+const REVERSAL_WICK_DOMINANCE: f64 = 2.0;
+const BALANCED_WICK_RATIO: f64 = 0.50;
+const EPSILON: f64 = 1e-8;
+const SAFE_BODY_MIN: f64 = 1e-12; 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CandlePattern {
-    BullishHammer,
-    BearishHammer,
-    BullishShootingStar,
-    BearishShootingStar,
-    BullishLongBody,
-    BearishLongBody,
-    MildBullish,
-    MildBearish,
-    DojiSpinningTop,
-    Unknown,
-}
 
-impl CandlePattern {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            CandlePattern::BullishHammer => "Bullish Hammer",
-            CandlePattern::BearishHammer => "Bearish Hammer",
-            CandlePattern::BullishShootingStar => "Bullish Shooting Star",
-            CandlePattern::BearishShootingStar => "Bearish Shooting Star",
-            CandlePattern::BullishLongBody => "Bullish Long Body",
-            CandlePattern::BearishLongBody => "Bearish Long Body",
-            CandlePattern::MildBullish => "Mild Bullish",
-            CandlePattern::MildBearish => "Mild Bearish",
-            CandlePattern::DojiSpinningTop => "Doji/SpinningTop",
-            CandlePattern::Unknown => "Unknown",
+// pub fn get_market_classification(
+//     open_val: f64, 
+//     high_val: f64, 
+//     low_val: f64, 
+//     close_val: f64
+// ) -> MarketClassification {
+    
+//     let session_range = high_val - low_val;
+    
+//     //  Handle Edge Cases
+//     if session_range <= EPSILON {
+//         return MarketClassification { 
+//             classification: MarketType::Consolidation, 
+//             subtype: MarketSubtype::PureIndecision 
+//         };
+//     }
+
+//     // Calculate Core Metrics
+//     let body_size = (close_val - open_val).abs();
+//     let real_body_high = close_val.max(open_val);
+//     let real_body_low = close_val.min(open_val);
+//     let upper_wick = high_val - real_body_high;
+//     let lower_wick = real_body_low - low_val;
+
+//     // Calculate Ratios 
+//     let safe_range = session_range.max(EPSILON);
+//     let body_range_ratio = body_size / safe_range;
+//     let upper_wick_ratio = upper_wick / safe_range;
+//     let lower_wick_ratio = lower_wick / safe_range;
+    
+//     // =======================================================
+//     //  TREND CLASSIFICATION (BULLISH/BEARISH) - Immediate Return if Confirmed
+//     // =======================================================
+
+//     if close_val > open_val { 
+    
+//         if upper_wick_ratio < OPPOSING_WICK_PRESSURE && body_range_ratio >= CONSOLIDATION_BODY_RATIO {
+//             return MarketClassification { 
+//                 classification: MarketType::Bullish, 
+//                 subtype: MarketSubtype::Confirmed 
+//             };
+//         }
+//     } else if close_val < open_val { 
+        
+//         if lower_wick_ratio < OPPOSING_WICK_PRESSURE && body_range_ratio >= CONSOLIDATION_BODY_RATIO {
+//             return MarketClassification { 
+//                 classification: MarketType::Bearish, 
+//                 subtype: MarketSubtype::Confirmed 
+//             };
+//         }
+//     }
+
+//     // =======================================================
+//     //  CONSOLIDATION CLASSIFICATION (Small Body Check)
+//     // =======================================================
+
+    
+
+//     if body_range_ratio < CONSOLIDATION_BODY_RATIO {
+        
+//         let safe_body = body_size.max(SAFE_BODY_MIN); 
+
+        
+//         if lower_wick >= REVERSAL_WICK_DOMINANCE * safe_body {
+//             return MarketClassification { 
+//                 classification: MarketType::Consolidation, 
+//                 subtype: MarketSubtype::BullishReversal 
+//             };
+//         } else if upper_wick >= REVERSAL_WICK_DOMINANCE * safe_body {
+//             return MarketClassification { 
+//                 classification: MarketType::Consolidation, 
+//                 subtype: MarketSubtype::BearishReversal 
+//             };
+//         }
+
+//         // Pure indecision 
+//         let min_wick = upper_wick.min(lower_wick);
+//         let max_wick = upper_wick.max(lower_wick);
+        
+//         if min_wick >= BALANCED_WICK_RATIO * max_wick { 
+//             return MarketClassification { 
+//                 classification: MarketType::Consolidation, 
+//                 subtype: MarketSubtype::PureIndecision 
+//             };
+//         }
+
+//         // Fallback for small body
+//         return MarketClassification { 
+//             classification: MarketType::Consolidation, 
+//             subtype: MarketSubtype::PureIndecision 
+//         };
+//     }
+
+//     // =======================================================
+//     //  FAILED TREND / VETOED TREND (Large Body, Large Opposing Wick)
+//     // =======================================================
+    
+    
+    
+//     if upper_wick_ratio >= OPPOSING_WICK_PRESSURE {
+//         // Bullish move was vetoed by the upper wick (sellers)
+//         return MarketClassification { 
+//             classification: MarketType::Consolidation, 
+//             subtype: MarketSubtype::FailedBullish 
+//         };
+//     } else if lower_wick_ratio >= OPPOSING_WICK_PRESSURE {
+//         // Bearish move was vetoed by the lower wick (buyers)
+//         return MarketClassification { 
+//             classification: MarketType::Consolidation, 
+//             subtype: MarketSubtype::FailedBearish 
+//         };
+//     }
+    
+//     // Final fallback (Should theoretically be unreachable if logic is perfect, but kept for robustness)
+//     MarketClassification { 
+//         classification: MarketType::Consolidation, 
+//         subtype: MarketSubtype::Other 
+//     }
+// }
+
+pub fn get_market_classification(
+    open_val: f64, 
+    high_val: f64, 
+    low_val: f64, 
+    close_val: f64
+) -> MarketType { // Changed return type to MarketType directly
+    
+    let session_range = high_val - low_val;
+    
+    //  Handle Edge Cases
+    if session_range <= EPSILON {
+        return MarketType::PureIndecision;
+    }
+
+    // Calculate Core Metrics
+    let body_size = (close_val - open_val).abs();
+    let real_body_high = close_val.max(open_val);
+    let real_body_low = close_val.min(open_val);
+    let upper_wick = high_val - real_body_high;
+    let lower_wick = real_body_low - low_val;
+
+    // Calculate Ratios 
+    let safe_range = session_range.max(EPSILON);
+    let body_range_ratio = body_size / safe_range;
+    let upper_wick_ratio = upper_wick / safe_range;
+    let lower_wick_ratio = lower_wick / safe_range;
+    
+    // =======================================================
+    //  TREND CLASSIFICATION (BULLISH/BEARISH)
+    // =======================================================
+
+    if close_val > open_val { 
+        // Confirmed Bullish
+        if upper_wick_ratio < OPPOSING_WICK_PRESSURE && body_range_ratio >= CONSOLIDATION_BODY_RATIO {
+            return MarketType::Bullish; 
+        }
+    } else if close_val < open_val { 
+        // Confirmed Bearish
+        if lower_wick_ratio < OPPOSING_WICK_PRESSURE && body_range_ratio >= CONSOLIDATION_BODY_RATIO {
+            return MarketType::Bearish; 
         }
     }
-}
 
-impl fmt::Display for CandlePattern {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+    // =======================================================
+    //  CONSOLIDATION / REVERSAL CLASSIFICATION (Small Body Check)
+    // =======================================================
 
-pub fn pattern_from_ohlc(
-    open: f64,
-    high: f64,
-    low: f64,
-    close: f64,
-    doji_body_ratio: f64,
-    body_wick_ratio_long: f64,
-    body_wick_ratio_short: f64,
-    upper_vs_lower_ratio: f64,
-    eps: f64,
-) -> CandlePattern {
-    let full_range = high - low;
-    let body_range = (close - open).abs();
+    if body_range_ratio < CONSOLIDATION_BODY_RATIO {
+        
+        let safe_body = body_size.max(SAFE_BODY_MIN); 
 
-    if full_range < eps {
-        return CandlePattern::Unknown;
-    }
-
-    let upper_wick = high - close.max(open);
-    let lower_wick = open.min(close) - low;
-
-    let body_ratio = body_range / full_range;
-    let upper_wick_ratio = upper_wick / full_range;
-    let lower_wick_ratio = lower_wick / full_range;
-
-    let is_bullish = close > open;
-
-    // Doji or Spinning Top
-    if body_ratio <= doji_body_ratio {
-        return CandlePattern::DojiSpinningTop;
-    }
-
-    // Hammer/Shooting Star
-    if body_ratio < body_wick_ratio_short {
-        if upper_wick_ratio / (lower_wick_ratio + eps) < upper_vs_lower_ratio {
-            return if is_bullish {
-                CandlePattern::BullishHammer
-            } else {
-                CandlePattern::BearishHammer
-            };
-        } else if lower_wick_ratio / (upper_wick_ratio + eps) < upper_vs_lower_ratio {
-            return if is_bullish {
-                CandlePattern::BullishShootingStar
-            } else {
-                CandlePattern::BearishShootingStar
-            };
+        // Bullish Reversal
+        if lower_wick >= REVERSAL_WICK_DOMINANCE * safe_body {
+            return MarketType::BullishReversal; 
+        } 
+        
+        // Bearish Reversal
+        else if upper_wick >= REVERSAL_WICK_DOMINANCE * safe_body {
+            return MarketType::BearishReversal; 
         }
-    }
 
-    // Long Body
-    if body_ratio >= body_wick_ratio_long {
-        if is_bullish {
-            return CandlePattern::BullishLongBody;
-        } else {
-            return CandlePattern::BearishLongBody;
+        // Pure indecision (Balanced Wicks)
+        let min_wick = upper_wick.min(lower_wick);
+        let max_wick = upper_wick.max(lower_wick);
+        
+        if min_wick >= BALANCED_WICK_RATIO * max_wick { 
+            return MarketType::PureIndecision; 
         }
+
+        // Fallback for small body
+        return MarketType::PureIndecision; 
     }
 
-    // Mild Body
-    if is_bullish {
-        CandlePattern::MildBullish
-    } else {
-        CandlePattern::MildBearish
+    // =======================================================
+    //  FAILED TREND / VETOED TREND (Large Body, Large Opposing Wick)
+    // =======================================================
+    
+    
+    if upper_wick_ratio >= OPPOSING_WICK_PRESSURE {
+        // Bullish move was vetoed by the upper wick (sellers)
+        return MarketType::FailedBullish; 
+    } else if lower_wick_ratio >= OPPOSING_WICK_PRESSURE {
+        // Bearish move was vetoed by the lower wick (buyers)
+        return MarketType::FailedBearish; 
     }
-}
-
-/// Helper function to use default constants
-pub fn classify_with_defaults(open: f64, high: f64, low: f64, close: f64) -> CandlePattern {
-    pattern_from_ohlc(
-        open,
-        high,
-        low,
-        close,
-        DEFAULT_DOJI_BODY_RATIO,
-        DEFAULT_BODY_WICK_RATIO_LONG,
-        DEFAULT_BODY_WICK_RATIO_SHORT,
-        DEFAULT_UPPER_VS_LOWER_RATIO,
-        DEFAULT_EPS,
-    )
+    
+    // Final fallback
+    MarketType::Other
 }

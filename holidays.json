@@ -1,0 +1,8 @@
+
+{
+  "holidays": [
+    { "date": "2025-12-25", "description": "Christmas Day" },
+    { "date": "2025-12-26", "description": "Boxing Day" },
+    { "date": "2026-01-01", "description": "New Years Day" }
+  ]
+}

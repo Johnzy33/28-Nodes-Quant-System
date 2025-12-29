@@ -1,17 +1,35 @@
-use std::env;
-use serde::Deserialize;
-use anyhow::Result; // Assuming you use anyhow::Result in this module
 
-// --- NEW STRUCTS: For Multi-Asset Ingestion Coordination ---
+use serde::{Deserialize, Serialize};
+use anyhow::Result; 
+
+
 
 /// Configuration for a single asset's CSV ingestion job.
+// #[derive(Debug, Deserialize, Clone)]
+// pub struct AssetIngestJob {
+//     pub symbol: String,
+//     pub file_path: String,
+//     pub topic_base: String, 
+// }
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct AssetIngestJob {
-    pub symbol: String,
-    pub file_path: String,
-    pub topic_base: String, // e.g., "market_data"
+    pub system_symbol: String, // Formerly 'symbol'
+    pub mt5_symbol: String,    // The new mapping field
+    //pub file_path: String,
+    pub topic_base: String,
+    pub timeframe: String,
+    pub enabled: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncCommand {
+    pub command: String,          // e.g., "SYNC"
+    pub system_symbol: String,    // e.g., "US100"
+    pub mt5_symbol: String,       // e.g., "NDX100"
+    pub start_timestamp_ms: i64,  // The HWM from your DB
+    pub timeframe: String,        // e.g., "M1"
+}
 /// The overall configuration for the ingestion coordinator, loaded from a config file.
 #[derive(Debug, Deserialize)]
 pub struct IngestionCoordinatorConfig {
@@ -23,7 +41,6 @@ pub struct IngestionCoordinatorConfig {
 impl IngestionCoordinatorConfig {
     /// Loads the configuration from a file (requires `serde_yaml` or similar).
     pub fn load_from_file(path: &str) -> Result<Self> {
-        // NOTE: This implementation requires `serde_yaml` or another parser
         let file_content = std::fs::read_to_string(path)?;
         let config: Self = serde_json::from_str(&file_content)?;
         Ok(config)
@@ -35,39 +52,33 @@ impl IngestionCoordinatorConfig {
 #[derive(Debug, Clone)]
 pub struct ProducerConfig {
     pub kafka_brokers: String,
-    // This is the SINGLE, calculated topic the Producer will send to.
     pub kafka_topic: String, 
     pub data_source_id: String,
-    pub file_path: String,
+    //pub file_path: String,
     pub asset_symbol: String,
-    // We keep the topic base for calculation, but don't need to expose it outside this file.
     kafka_topic_base: String, 
 }
 
 impl ProducerConfig {
-    // REMOVED: The pub fn load() function that relied on std::env::var for asset-specific fields.
-
-    /// NEW CONSTRUCTOR: Initializes config from shared brokers and per-asset job data.
-    /// This decouples the config from environment variables for asset-specific settings.
+    
     pub fn from_job(
         brokers: String, 
         data_source: String, 
         job: AssetIngestJob
     ) -> Self {
         
-        // 💥 CALCULATE THE SINGLE TARGET TOPIC based on the job data
         let kafka_topic = format!(
             "{}_{}", 
-            job.symbol.to_lowercase(), 
+            job.system_symbol.to_lowercase(), 
             job.topic_base
         );
 
         ProducerConfig {
             kafka_brokers: brokers,
-            kafka_topic, // The calculated single topic
+            kafka_topic, 
             data_source_id: data_source,
-            file_path: job.file_path,
-            asset_symbol: job.symbol,
+            //file_path: job.file_path,
+            asset_symbol: job.system_symbol,
             kafka_topic_base: job.topic_base,
         }
     }

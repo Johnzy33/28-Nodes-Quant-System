@@ -3,24 +3,60 @@
   "data_source_id": "FundedNext",
   "assets": [
     {
-      "symbol": "JP225",
-      "file_path": "./JP225.csv",
-      "topic_base": "market_data"
+      "system_symbol": "JP225",
+      "mt5_symbol": "JP225",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
     },
     {
-      "symbol": "US100",
-      "file_path": "./US100.csv",
-      "topic_base": "market_data"
+      "system_symbol": "US100",
+      "mt5_symbol": "NDX100", 
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
     },
     {
-      "symbol": "UK100",
-      "file_path": "./UK100.csv",
-      "topic_base": "market_data"
+      "system_symbol": "UK100",
+      "mt5_symbol": "UK100",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
     },
     {
-        "symbol": "US2000",
-        "file_path": "./US2000.csv",
-        "topic_base": "market_data"
+      "system_symbol": "US2000",
+      "mt5_symbol": "US2000",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
+    },
+    {
+      "system_symbol": "US30",
+      "mt5_symbol": "US30",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
+    },
+    {
+      "system_symbol": "SPX500",
+      "mt5_symbol": "SPX500",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
+    },
+    {
+      "system_symbol": "XAUUSD",
+      "mt5_symbol": "XAUUSD",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
+    },
+    {
+      "system_symbol": "XAGUSD",
+      "mt5_symbol": "XAGUSD",
+      "topic_base": "market_data",
+      "timeframe": "M15",
+      "enabled": true
     }
   ]
 }

@@ -11,7 +11,7 @@ CREATE TABLE weekly_views (
     asset_id TEXT NOT NULL,
     Month_of_Year INTEGER NOT NULL,
     Weekly_Type TEXT,
-    Consolidation_Subtype TEXT,
+   -- Consolidation_Subtype TEXT,
     open DOUBLE PRECISION,
     high DOUBLE PRECISION,
     low DOUBLE PRECISION,

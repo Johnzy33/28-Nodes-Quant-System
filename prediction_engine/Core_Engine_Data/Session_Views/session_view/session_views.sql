@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS session_views (
   asset_id text NOT NULL,
   session_name text NOT NULL,
   session_type text NOT NULL,              -- Primary classification
-  consolidation_subtype text,             -- Secondary classification
+  --consolidation_subtype text,             -- Secondary classification
   start_ts timestamptz NOT NULL,
   end_ts timestamptz NOT NULL,
   open double precision,

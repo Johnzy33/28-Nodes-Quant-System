@@ -43,7 +43,7 @@
     "asset_class": "Index_Future",
     "currency": "USD",
     "exchange": "CME",
-    "source": "DuckasCopy"
+    "source": "FundedNext"
   },
   {
     "symbol": "US30",
@@ -53,6 +53,24 @@
     "currency":"USD",
     "exchange":"CME",
     "source":"FundedNext"
+  },
+  {
+    "symbol": "XAUUSD",
+    "timezone": "America/New_York",
+    "name": "Gold vs US Dollar",
+    "asset_class": "Commodity Future",
+    "currency": "USD",
+    "exchange": "COMEX",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "XAGUSD",
+    "timezone": "America/New_York",
+    "name": "Silver vs US Dollar",
+    "asset_class": "Commodity Future",
+    "currency": "USD",
+    "exchange": "COMEX",
+    "source": "FundedNext"
   }
 
 ]

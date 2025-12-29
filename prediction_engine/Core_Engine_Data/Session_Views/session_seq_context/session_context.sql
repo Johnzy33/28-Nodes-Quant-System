@@ -8,14 +8,14 @@ CREATE TABLE session_context (
     asset_id text NOT NULL,
     cs_name text NOT NULL,             -- Current Session Name (CS)
     -- 1st Order Context Keys (3-State Biases)
-    cs_bias_3 text,
+    cs_bias text,
     ps1_name text,
-    ps1_bias_3 text,
+    ps1_bias text,
     -- 2nd Order Context Keys (7-State Biases)
-    cs_bias_7 text,
-    ps1_bias_7 text,
+   -- cs_bias_7 text,
+  --  ps1_bias_7 text,
     ps2_name text,
-    ps2_bias_7 text,
+    ps2_bias text,
     -- Timestamp for sequencing
     session_end_ts timestamp with time zone NOT NULL,
     -- The PRIMARY KEY is the only necessary UNIQUE constraint
@@ -28,64 +28,64 @@ CREATE TABLE session_context (
 CREATE INDEX session_context_sequence_idx ON public.session_context USING btree (asset_id, session_end_ts DESC);
 
 
--- -----------------------------------------------------------
--- 2. SQL to populate/recalculate the session_context table
--- -----------------------------------------------------------
+-- -- -----------------------------------------------------------
+-- -- 2. SQL to populate/recalculate the session_context table
+-- -- -----------------------------------------------------------
 
-WITH session_with_keys AS (
-    -- Step A: Derive the 7-State Bias from existing columns (session_type and consolidation_subtype)
-    SELECT
-        sv.trading_date,
-        sv.asset_id,
-        sv.session_name,
-        sv.end_ts,
-        sv.session_type AS bias_3, 
-        CASE
-            WHEN sv.session_type = 'Consolidation' THEN sv.consolidation_subtype
-            ELSE sv.session_type
-        END AS bias_7 
-    FROM
-        session_views sv
-),
-ordered_sessions AS (
-    -- Step B: Apply LAG window functions to establish PS1 and PS2 context
-    SELECT
-        sk.trading_date,
-        sk.asset_id,
-        sk.session_name,
-        sk.end_ts,
-        sk.bias_3 AS cs_bias_3,
-        sk.bias_7 AS cs_bias_7,
-        -- PS1 (Preceding Session 1)
-        LAG(sk.session_name, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_name,
-        LAG(sk.bias_3, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_bias_3,
-        LAG(sk.bias_7, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_bias_7,
-        -- PS2 (Preceding Session 2)
-        LAG(sk.session_name, 2) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps2_name,
-        LAG(sk.bias_7, 2) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps2_bias_7
-    FROM
-        session_with_keys sk
-)
--- Step C: Insert the derived context into the session_context table
-INSERT INTO session_context (
-    trading_date, asset_id, cs_name, cs_bias_3, ps1_name, ps1_bias_3, cs_bias_7, ps1_bias_7, ps2_name, ps2_bias_7, session_end_ts
-)
-SELECT
-    trading_date, asset_id, session_name, cs_bias_3, ps1_name, ps1_bias_3, cs_bias_7, ps1_bias_7, ps2_name, ps2_bias_7, end_ts
-FROM
-    ordered_sessions
-WHERE
-    ps1_name IS NOT NULL -- Must have at least a 1st preceding session
-ON CONFLICT (trading_date, asset_id, cs_name) DO UPDATE
-SET
-    cs_bias_3 = EXCLUDED.cs_bias_3,
-    ps1_name = EXCLUDED.ps1_name,
-    ps1_bias_3 = EXCLUDED.ps1_bias_3,
-    cs_bias_7 = EXCLUDED.cs_bias_7,
-    ps1_bias_7 = EXCLUDED.ps1_bias_7,
-    ps2_name = EXCLUDED.ps2_name,
-    ps2_bias_7 = EXCLUDED.ps2_bias_7,
-    session_end_ts = EXCLUDED.session_end_ts;
+-- WITH session_with_keys AS (
+--     -- Step A: Derive the 7-State Bias from existing columns (session_type and consolidation_subtype)
+--     SELECT
+--         sv.trading_date,
+--         sv.asset_id,
+--         sv.session_name,
+--         sv.end_ts,
+--         sv.session_type AS bias_3, 
+--         CASE
+--             WHEN sv.session_type = 'Consolidation' THEN sv.consolidation_subtype
+--             ELSE sv.session_type
+--         END AS bias_7 
+--     FROM
+--         session_views sv
+-- ),
+-- ordered_sessions AS (
+--     -- Step B: Apply LAG window functions to establish PS1 and PS2 context
+--     SELECT
+--         sk.trading_date,
+--         sk.asset_id,
+--         sk.session_name,
+--         sk.end_ts,
+--         sk.bias_3 AS cs_bias_3,
+--         sk.bias_7 AS cs_bias_7,
+--         -- PS1 (Preceding Session 1)
+--         LAG(sk.session_name, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_name,
+--         LAG(sk.bias_3, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_bias_3,
+--         LAG(sk.bias_7, 1) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps1_bias_7,
+--         -- PS2 (Preceding Session 2)
+--         LAG(sk.session_name, 2) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps2_name,
+--         LAG(sk.bias_7, 2) OVER (PARTITION BY sk.asset_id ORDER BY sk.end_ts) AS ps2_bias_7
+--     FROM
+--         session_with_keys sk
+-- )
+-- -- Step C: Insert the derived context into the session_context table
+-- INSERT INTO session_context (
+--     trading_date, asset_id, cs_name, cs_bias_3, ps1_name, ps1_bias_3, cs_bias_7, ps1_bias_7, ps2_name, ps2_bias_7, session_end_ts
+-- )
+-- SELECT
+--     trading_date, asset_id, session_name, cs_bias_3, ps1_name, ps1_bias_3, cs_bias_7, ps1_bias_7, ps2_name, ps2_bias_7, end_ts
+-- FROM
+--     ordered_sessions
+-- WHERE
+--     ps1_name IS NOT NULL -- Must have at least a 1st preceding session
+-- ON CONFLICT (trading_date, asset_id, cs_name) DO UPDATE
+-- SET
+--     cs_bias_3 = EXCLUDED.cs_bias_3,
+--     ps1_name = EXCLUDED.ps1_name,
+--     ps1_bias_3 = EXCLUDED.ps1_bias_3,
+--     cs_bias_7 = EXCLUDED.cs_bias_7,
+--     ps1_bias_7 = EXCLUDED.ps1_bias_7,
+--     ps2_name = EXCLUDED.ps2_name,
+--     ps2_bias_7 = EXCLUDED.ps2_bias_7,
+--     session_end_ts = EXCLUDED.session_end_ts;
 
 
 
@@ -151,3 +151,5 @@ AS $$
     WHERE
         ps1_name IS NOT NULL; -- Must have at least a 1st preceding session
 $$;
+
+CALL refresh_session_context();

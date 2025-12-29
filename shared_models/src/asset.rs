@@ -8,6 +8,7 @@ pub struct Asset {
     // Format: "assets:US1000"
     pub id: String, 
     pub symbol: String,       // "US1000"
+    pub source: String,      // "BROKER_A"
     pub name: Option<String>, 
     pub asset_class: Option<String>, 
     pub currency: Option<String>,
@@ -23,6 +24,7 @@ impl Asset {
         Self {
             id,
             symbol,
+            source: "DEFAULT".to_string(),
             timezone,
             name: None,
             asset_class: None,

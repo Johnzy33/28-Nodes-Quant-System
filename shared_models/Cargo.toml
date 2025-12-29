@@ -13,3 +13,5 @@ env_logger = { workspace = true }
 tokio-postgres = { workspace = true }
 sqlx = {workspace = true}
 chrono-tz ="0.10.4"
+strum_macros= {workspace = true}
+strum= {workspace = true}   

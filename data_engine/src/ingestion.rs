@@ -1,155 +1,232 @@
-use anyhow::{Result, Context};
-use std::time::Duration;
-use rdkafka::{
-    config::ClientConfig,
-    producer::{FutureProducer, FutureRecord},
-    producer::Producer as KafkaProducer, 
-};
-use database_engine::producer_config::ProducerConfig;
-use csv::{ReaderBuilder, Trim}; 
-use crate::{
-    csv_reader::{CsvRecordStandard, CsvRecordBracketed}, 
-}; 
+// use anyhow::{Result, Context};
+// use log::info;
+// use sqlx::PgPool;
+// use std::time::Duration;
+// use rdkafka::{
+//     config::ClientConfig,
+//     producer::{FutureProducer, FutureRecord},
+//     producer::Producer as KafkaProducer, 
+// };
+// use crate::producer_config::{ProducerConfig, IngestionCoordinatorConfig, SyncCommand};
+// use csv::{ReaderBuilder, Trim}; 
+// use crate::{
+//     csv_reader::{CsvRecordStandard, CsvRecordBracketed}, 
+//     DataService,
+// }; 
 
-use shared_models::{market_data::MarketData, time_utils}; 
-use serde::de::DeserializeOwned; 
-use std::fs::File;
+// use shared_models::{market_data::MarketData, 
+//     time_utils::ts_to_utc_datetime, parse_ymd_hms_to_utc_datetime
+// }; 
+// use serde::de::DeserializeOwned; 
+// use std::fs::File;
+// use chrono::Duration as ChronoDuration;
+
+// const HWM_BUFFER_DURATION: ChronoDuration = ChronoDuration::hours(1);
 
 
+// /// Defines the method required to convert any CSV record struct into the final MarketData struct.
+// trait CsvMapping {
+//     fn to_market_data(&self, asset_id: &str) -> Result<MarketData>;
+// }
 
-/// Defines the method required to convert any CSV record struct into the final MarketData struct.
-trait CsvMapping {
-    fn to_market_data(&self, asset_id: &str) -> Result<MarketData>;
-}
+// // --- Implement Trait for Standard Struct ---
+// impl CsvMapping for CsvRecordStandard {
+//     fn to_market_data(&self, asset_id: &str) -> Result<MarketData> {
+//         process_record(&self.date, &self.time, asset_id, self.open, self.high, self.low, self.close, self.volume)
+//     }
+// }
 
-// --- Implement Trait for Standard Struct ---
-impl CsvMapping for CsvRecordStandard {
-    fn to_market_data(&self, asset_id: &str) -> Result<MarketData> {
-        process_record(&self.date, &self.time, asset_id, self.open, self.high, self.low, self.close, self.volume)
-    }
-}
+// // --- Implement Trait for Bracketed Struct ---
+// impl CsvMapping for CsvRecordBracketed {
+//     fn to_market_data(&self, asset_id: &str) -> Result<MarketData> {
+//         // volume maps to <TICKVOL> for this struct
+//         process_record(&self.date, &self.time, asset_id, self.open, self.high, self.low, self.close, self.volume)
+//     }
+// }
 
-// --- Implement Trait for Bracketed Struct ---
-impl CsvMapping for CsvRecordBracketed {
-    fn to_market_data(&self, asset_id: &str) -> Result<MarketData> {
-        // volume maps to <TICKVOL> for this struct
-        process_record(&self.date, &self.time, asset_id, self.open, self.high, self.low, self.close, self.volume)
-    }
-}
+// // --- Common Record Processing Logic ---
 
-// --- Common Record Processing Logic ---
-
-fn process_record(
-    date: &str, time: &str, asset_id: &str, 
-    open: f64, high: f64, low: f64, close: f64, volume: f64
-) -> Result<MarketData> {
+// fn process_record(
+//     date: &str, time: &str, asset_id: &str, 
+//     open: f64, high: f64, low: f64, close: f64, volume: f64
+// ) -> Result<MarketData> {
     
-    // 1. Prepare raw date/time string
-    let cleaned_date: String = date.trim().chars().filter(|c| c.is_ascii()).collect();
-    let cleaned_time: String = time.trim().chars().filter(|c| c.is_ascii()).collect();
-    let dt_str = format!("{} {}", cleaned_date, cleaned_time); 
+//     // 1. Prepare raw date/time string
+//     let cleaned_date: String = date.trim().chars().filter(|c| c.is_ascii()).collect();
+//     let cleaned_time: String = time.trim().chars().filter(|c| c.is_ascii()).collect();
+//     let dt_str = format!("{} {}", cleaned_date, cleaned_time); 
     
     
-    let ts_ms = time_utils::parse_ymd_hms_to_utc_datetime(&dt_str)
-        .context("Failed to parse date/time string; check if time_utils anchors to Athens time.")?
-        .timestamp_millis();
+//     let ts_ms = parse_ymd_hms_to_utc_datetime(&dt_str)
+//         .context("Failed to parse date/time string; check if time_utils anchors to Athens time.")?
+//         .timestamp_millis();
         
-    Ok(MarketData {
-        asset_id: asset_id.to_string(), 
-        ts: ts_ms,
-        open,
-        high,
-        low,
-        close,
-        volume,
-        seq: None, 
-        source: Some("FundedNext".to_string()),
-    })
-}
+//     Ok(MarketData {
+//         asset_id: asset_id.to_string(), 
+//         ts: ts_ms,
+//         open,
+//         high,
+//         low,
+//         close,
+//         volume,
+//         seq: None, 
+//         source: Some("FundedNext".to_string()),
+//     })
+// }
 
 
-/// Ingests historical market data from a CSV file, automatically detecting the header format.
-pub async fn ingest_from_csv(config: ProducerConfig) -> Result<()> {
+
+// pub async fn ingest_from_csv(config: ProducerConfig, pool: PgPool) -> Result<()> { // CHANGE: Added pool: PgPool
     
-    // 1. Check file headers to determine format and delimiter
-    let file = File::open(&config.file_path).context("Failed to open CSV file for header check")?;
+//     // 1. Check file headers to determine format and delimiter
+//     let file = File::open(&config.file_path).context("Failed to open CSV file for header check")?;
     
-    // Use a robust reader for the initial check (assuming one of two delimiters)
-    let mut temp_reader = ReaderBuilder::new()
-        .has_headers(true)
-        // Check for tab-delimited first, as bracketed files often use tabs
-        .delimiter(b'\t') 
-        .from_reader(file); 
+//     // ... (Existing logic to read headers and check is_bracketed) ...
+//     let mut temp_reader = ReaderBuilder::new()
+//         .has_headers(true)
+//         .delimiter(b'\t') 
+//         .from_reader(file); 
         
-    let headers = temp_reader.headers()?.clone();
+//     let headers = temp_reader.headers()?.clone();
+//     let is_bracketed = headers.iter()
+//         .any(|h| h.trim().starts_with('<') && h.trim().ends_with('>'));
 
-    // Check for bracketed format
-    let is_bracketed = headers.iter()
-        .any(|h| h.trim().starts_with('<') && h.trim().ends_with('>'));
+//     // Create the DataService instance to handle the HWM query
+//     let data_service = DataService::new(pool); // NEW: DataService instance
 
-    // Determine which concrete struct type to use
-    if is_bracketed {
-       
-        // Bracketed format uses TAB ('\t')
-        ingest_generic::<CsvRecordBracketed>(config, b'\t').await
-    } else {
+//     // Determine which concrete struct type to use
+//     if is_bracketed {
+//         // Bracketed format uses TAB ('\t')
+//         ingest_generic::<CsvRecordBracketed>(config, b'\t', &data_service).await // CHANGE: Pass &data_service
+//     } else {
+//         // Standard format usually uses COMMA (',')
+//         ingest_generic::<CsvRecordStandard>(config, b',', &data_service).await // CHANGE: Pass &data_service
+//     }
+// }
+
+// // --- Generic Ingestion Worker ---
+
+
+
+
+// async fn ingest_generic<T>(config: ProducerConfig, delimiter: u8, data_service: &DataService) -> Result<()> // CHANGE: Added data_service reference
+// where 
+//     T: DeserializeOwned + CsvMapping, // T must be Deserializable and implement our trait
+// {
+    
+//     // --- HWM Step 1: Configuration and HWM Retrieval ---
+//     let asset_id = config.get_asset_id();
+//     let kafka_topic = &config.kafka_topic; 
+    
+//     let max_ts_option = data_service.get_market_data_high_watermark(&asset_id).await
+//         .context("Failed to retrieve market data high water mark")?;
         
-        // Standard format usually uses COMMA (',')
-        ingest_generic::<CsvRecordStandard>(config, b',').await
-    }
-}
+//     let filter_ts_ms: i64 = if let Some(max_ts) = max_ts_option {
+//         // Calculate the filter timestamp: HWM minus 3 hours (in milliseconds)
+//         let buffer_ms = HWM_BUFFER_DURATION.num_milliseconds();
+//         let buffered_ts = max_ts - buffer_ms;
 
-// --- Generic Ingestion Worker ---
+//         buffered_ts
+//     } else {
+//         // If no data, use 0, ensuring all records are sent for the initial load.
+//         info!(" No HWM found for {}. Performing full historical ingestion.", asset_id);
+//         0
+//     };
+    
+//     // ... (Existing Kafka Producer and CSV Reader setup) ...
+//     let producer: FutureProducer = ClientConfig::new()
+//         .set("bootstrap.servers", &config.kafka_brokers)
+//         .set("message.timeout.ms", "5000")
+//         .create()
+//         .context("Producer creation error")?;
+    
+//     // Re-open the file to restart reading from the beginning
+//     let mut reader = ReaderBuilder::new()
+//         .has_headers(true)
+//         .delimiter(delimiter) 
+//         .trim(Trim::All) 
+//         .from_path(&config.file_path)?;
 
-async fn ingest_generic<T>(config: ProducerConfig, delimiter: u8) -> Result<()>
-where 
-    T: DeserializeOwned + CsvMapping, // T must be Deserializable and implement our trait
-{
+//     let mut total_records_read = 0;
+//     let mut total_records_sent = 0;
     
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &config.kafka_brokers)
-        .set("message.timeout.ms", "5000")
-        .create()
-        .context("Producer creation error")?;
-    
-    // Re-open the file to restart reading from the beginning
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        // Set the delimiter dynamically (',' or '\t')
-        .delimiter(delimiter) 
-        // Crucial: trims whitespace from headers and fields during deserialization
-        .trim(Trim::All) 
-        .from_path(&config.file_path)?;
-
-    let asset_id = config.get_asset_id();
-    let kafka_topic = &config.kafka_topic; 
-    
-    let mut total_records = 0;
-    
-    // 3. INGESTION LOOP
-    for result in reader.deserialize() {
-        let csv_record: T = result.context("CSV record deserialization failed")?;
+//     // 3. INGESTION LOOP with HWM FILTER
+//     for result in reader.deserialize() {
+//         let csv_record: T = result.context("CSV record deserialization failed")?;
         
-        let market_data = csv_record.to_market_data(&asset_id)
-            .context("Failed to map CSV record to MarketData")?;
+//         let market_data = csv_record.to_market_data(&asset_id)
+//             .context("Failed to map CSV record to MarketData")?;
             
-        let payload = serde_json::to_vec(&market_data).context("Failed to serialize MarketData")?;
-        let key = format!("{}:{}", market_data.asset_id, market_data.ts); 
-        
-        let delivery_result = producer
-            .send(FutureRecord::to(kafka_topic).payload(&payload).key(&key), Duration::from_secs(0))
-            .await;
+//         total_records_read += 1;
             
-        if let Err((e, _)) = delivery_result {
-            eprintln!("Kafka delivery failed for record {}: {:?}", total_records, e);
-        }
-        total_records += 1;
-    }
+//         // --- HWM FILTERING LOGIC with BUFFER ---
+//         // Only send the record if its timestamp (market_data.ts) is GREATER THAN OR EQUAL TO the buffered HWM.
+//         if market_data.ts >= filter_ts_ms { // CRITICAL FILTER: Comparison using i64 (milliseconds)
+            
+//             let payload = serde_json::to_vec(&market_data).context("Failed to serialize MarketData")?;
+//             let key = format!("{}:{}", market_data.asset_id, market_data.ts); 
+            
+//             let delivery_result = producer
+//                 .send(FutureRecord::to(kafka_topic).payload(&payload).key(&key), Duration::from_secs(0))
+//                 .await;
+                
+//             if let Err((e, _)) = delivery_result {
+//                 eprintln!("Kafka delivery failed for record {}: {:?}", total_records_read, e);
+//             }
+//             total_records_sent += 1;
+//         } 
+//         // Else: The record is older than the 3-hour buffered cutoff, so it is skipped.
+//     }
     
-    // 4. CLEANUP
-    producer.flush(Duration::from_secs(10))
-        .context("Failed to flush remaining Kafka messages")?;
+//     // 4. CLEANUP and Summary
+//     producer.flush(Duration::from_secs(10))
+//         .context("Failed to flush remaining Kafka messages")?;
     
-  
-    Ok(())
-}
+//     info!("✅ Ingestion Complete: Read {} records. Sent {} new/buffered records to Kafka.", 
+//         total_records_read, 
+//         total_records_sent
+//     );
+    
+//     Ok(())
+// }
+
+// pub async fn publish_sync_requests(
+//     producer: &FutureProducer,
+//     config: &IngestionCoordinatorConfig,
+//     data_service: &DataService, // Your existing service that queries the DB
+// ) -> Result<()> {
+    
+//     for asset in &config.assets {
+//         if !asset.enabled { continue; }
+
+//         // 1. Get the High Water Mark from SurrealDB/Postgres
+//         let asset_id = format!("assets:{}:{}", asset.system_symbol, config.data_source_id);
+//         let hwm = data_service.get_market_data_high_watermark(&asset_id).await?
+//             .unwrap_or(0); // If no data, start from 0 (all history)
+
+//         // 2. Build the Sync Command
+//         let sync_cmd = SyncCommand {
+//             command: "SYNC".to_string(),
+//             system_symbol: asset.system_symbol.clone(),
+//             mt5_symbol: asset.mt5_symbol.clone(),
+//             start_timestamp_ms: hwm,
+//             timeframe: asset.timeframe.clone(),
+//         };
+
+//         let payload = serde_json::to_vec(&sync_cmd)?;
+
+//         // 3. Publish to the 'market_control' topic
+//         // We use the system_symbol as the key so all commands for one asset 
+//         // stay in order within Kafka.
+//         producer.send(
+//             FutureRecord::to("market_control")
+//                 .payload(&payload)
+//                 .key(&asset.system_symbol),
+//             Duration::from_secs(5)
+//         ).await.map_err(|(e, _)| e)?;
+
+//         println!("Sent Sync Request for {} starting from {}", asset.system_symbol, hwm);
+//     }
+
+//     Ok(())
+// }

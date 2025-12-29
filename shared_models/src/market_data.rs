@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-/// Core data contract for Kafka. 1-Hour candle data.
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MarketData {
-    pub asset_id: String,   // Foreign Key
-    pub ts: i64,            // Unix milliseconds
+    pub asset_id: String,   
+    pub ts: i64,            
     pub open: f64,
     pub high: f64,
     pub low: f64,
