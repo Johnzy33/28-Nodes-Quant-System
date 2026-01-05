@@ -102,23 +102,60 @@ impl Mt5Watchdog {
         }
     }
 
+    // fn is_market_open(&self) -> bool {
+    //     let now = Utc::now();
+        
+    //     // Weekend check
+    //     let day = now.weekday();
+    //     if day == chrono::Weekday::Sat { return false; }
+    //     if day == chrono::Weekday::Fri && now.hour() >= 22 { return false; }
+    //     if day == chrono::Weekday::Sun && now.hour() < 22 { return false; }
+        
+    //     // Maintenance hour
+    //     if now.hour() == 21 { return false; }
+
+    //     // Holiday check
+    //     if self.is_holiday(&now) {
+    //         info!("Watchdog: Market is closed for holiday.");
+    //         return false;
+    //     }
+
+    //     true
+    // }
+
     fn is_market_open(&self) -> bool {
         let now = Utc::now();
-        
-        // Weekend check
+        let hour = now.hour();
         let day = now.weekday();
-        if day == chrono::Weekday::Sat { return false; }
-        if day == chrono::Weekday::Fri && now.hour() >= 22 { return false; }
-        if day == chrono::Weekday::Sun && now.hour() < 22 { return false; }
-        
-        // Maintenance hour
-        if now.hour() == 21 { return false; }
 
-        // Holiday check
+        // 1. Hard Weekend Gate
+        if day == chrono::Weekday::Sat { return false; }
+        
+        // 2. Standard Friday Close (22:00 UTC)
+        if day == chrono::Weekday::Fri && hour >= 22 { return false; }
+
+        // 3. Re-opening Logic (Sunday or Holiday)
+        // Most markets (MT5/Liquidity Providers) wake up at 22:00 UTC
+        let is_reopening_period = hour >= 22;
+
+        if day == chrono::Weekday::Sun {
+            if !is_reopening_period { return false; }
+            // If it's Sunday after 22:00, we are OPEN.
+        }
+
+        // 4. Holiday Gate with Re-opening Exception
         if self.is_holiday(&now) {
-            info!("Watchdog: Market is closed for holiday.");
+            if is_reopening_period {
+                // Market is starting to breathe again
+                return true;
+            }
+            info!("Watchdog: Market is closed for holiday ({})", now.format("%Y-%m-%d"));
             return false;
         }
+
+        // 5. Daily Maintenance Window (21:00 - 22:00 UTC)
+        // Very important for MT5/Indices to avoid "ghost" data or freeze-restarts
+        if hour == 21 { return false; }
 
         true
     }

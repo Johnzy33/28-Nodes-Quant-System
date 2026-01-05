@@ -1,7 +1,11 @@
-use shared_models::{
-    AnchoredGrid, Candle, GridLayer, PriceLevel, SignalQuality, TradeSignal, TradingBias
-};
-use crate::tracker::CampaignTracker;
+
+use crate::spg_tracker::SpgTracker;
+use crate::anchored_grid::AnchoredGrid;
+use crate::price_grid::GridLayer;
+use crate::price_grid::PriceLevel;
+use crate::signal_type::{TradingBias, SignalQuality, TradeSignal};
+use shared_models::candle::Candle;
+
 
 // --- Helper Functions ---
 
@@ -22,7 +26,7 @@ fn get_layer_bias(grid: &AnchoredGrid, current_price: f64) -> TradingBias {
 
 /// Implements the Weighted Hierarchical Veto System (Quality Scoring),  The immediate higher layer (MultiDay, L4) carries the most weight (+2).
 fn calculate_signal_quality(
-    tracker: &CampaignTracker, 
+    tracker: &SpgTracker, 
     base_bias: TradingBias,
     current_price: f64
 ) -> SignalQuality {
@@ -38,7 +42,7 @@ fn calculate_signal_quality(
     }
 
     // Check against the Weekly (L3) (Weight: 1)
-    if let Some(weekly_grid) = tracker.get_grid(GridLayer::Weekly) {
+    if let Some(weekly_grid) = tracker.get_grid(GridLayer::PW) {
         if get_layer_bias(weekly_grid, current_price) == base_bias {
             alignment_score += 1;
         }
@@ -62,7 +66,7 @@ fn calculate_signal_quality(
 
 // --- Main Execution Logic ---
 
-impl CampaignTracker {
+impl SpgTracker {
     
     pub fn generate_trade_signal(
         &self, 

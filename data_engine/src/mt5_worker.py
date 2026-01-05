@@ -375,7 +375,7 @@ def main():
     consumer = KafkaConsumer(
         CONTROL_TOPIC,
         bootstrap_servers=KAFKA_BROKERS,
-        group_id=f"mt5_worker_{SOURCE_ID}",
+        group_id=f"mt5_workerv2_{SOURCE_ID}",
         value_deserializer=lambda v: json.loads(v.decode('utf-8'))
     )
 
@@ -385,6 +385,7 @@ def main():
 
     try:
         for message in consumer:
+            print(f"DEBUG: Received message: {message.value}")
             cmd = message.value
             if cmd.get("command") == "SYNC":
                 handle_sync(cmd, producer)
@@ -396,3 +397,294 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# import MetaTrader5 as mt5
+# import json
+# import time
+# import threading
+# import pytz
+# import os
+# from dotenv import load_dotenv
+# from pathlib import Path
+# from datetime import datetime, timezone
+# from kafka import KafkaConsumer, KafkaProducer
+
+# load_dotenv()
+
+# # --- CONFIGURATION ---
+# MT5_PATH = os.getenv("MT5_TERMINAL_PATH", "/home/daredevil/.wine/drive_c/Program Files/FundedNext MT5 Terminal/terminal64.exe")
+# KAFKA_BROKERS = ['127.0.0.1:9092']
+# CONTROL_TOPIC = "market_control"
+# HEARTBEAT_TOPIC = "market_heartbeat"
+# SOURCE_ID = "FundedNext"
+
+# CACHED_OFFSET = None
+# LAST_OFFSET_UPDATE = 0
+
+# TIMEFRAME_MAP = {
+#     "M1": mt5.TIMEFRAME_M1,
+#     "M5": mt5.TIMEFRAME_M5,
+#     "M15": mt5.TIMEFRAME_M15,
+#     "H1": mt5.TIMEFRAME_H1,
+#     "D1": mt5.TIMEFRAME_D1
+# }
+
+# ACTIVE_STREAMS = {}
+# lock = threading.Lock()
+
+# # --- UTILITIES ---
+
+# def get_health_path():
+#     base = os.getenv("MARKET_DATA_DIR", ".")
+#     filename = os.getenv("HEALTH_FILE_NAME", "mt5_health.json")
+#     return Path(base) / filename
+
+# def update_health_status(is_connected):
+#     health_path = get_health_path()
+#     temp_path = health_path.with_suffix(".tmp")
+#     status = {
+#         "last_ping": int(time.time() * 1000),
+#         "mt5_connected": is_connected,
+#         "pid": os.getpid()
+#     }
+#     try:
+#         health_path.parent.mkdir(parents=True, exist_ok=True)
+#         with open(temp_path, "w") as f:
+#             json.dump(status, f)
+#         os.replace(temp_path, health_path)
+#     except Exception as e:
+#         print(f"[!] Health File Write Error: {e}")
+
+# def get_kafka_producer():
+#     return KafkaProducer(
+#         bootstrap_servers=KAFKA_BROKERS,
+#         value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+#         key_serializer=lambda k: k.encode('utf-8') if k else None,
+#         acks=1
+#     )
+
+# def get_broker_offset():
+#     global CACHED_OFFSET, LAST_OFFSET_UPDATE
+#     current_time = time.time()
+#     if CACHED_OFFSET is None or (current_time - LAST_OFFSET_UPDATE) > 3600:
+#         symbol = "EURUSD"
+#         info = mt5.symbol_info_tick(symbol)
+#         if info:
+#             broker_time = info.time 
+#             utc_time = int(datetime.now(timezone.utc).timestamp())
+#             CACHED_OFFSET = round((broker_time - utc_time) / 3600) * 3600
+#             LAST_OFFSET_UPDATE = current_time
+#             print(f"🔄 [OFFSET] Refreshed Broker Offset: {CACHED_OFFSET}s")
+#         else:
+#             if CACHED_OFFSET is None: CACHED_OFFSET = 7200 
+#     return CACHED_OFFSET
+
+# def to_utc_ms(broker_time_seconds, offset):
+#     return int((broker_time_seconds - offset) * 1000)
+
+# # --- HEARTBEAT & STREAMING ---
+
+# def heartbeat_loop(producer):
+#     while True:
+#         try:
+#             terminal_info = mt5.terminal_info()
+#             is_connected = terminal_info is not None
+#             update_health_status(is_connected)
+#             hb_payload = {
+#                 "status": "running",
+#                 "mt5_connected": is_connected,
+#                 "timestamp": time.time(),
+#                 "source": SOURCE_ID
+#             }
+#             producer.send(HEARTBEAT_TOPIC, value=hb_payload)
+#             time.sleep(5)
+#         except Exception as e:
+#             print(f"[!] Heartbeat Error: {e}")
+#             time.sleep(2)
+
+# def stream_loop(producer):
+#     print("[Thread] Smart Streaming loop started.")
+#     last_sent_state = {}
+#     while True:
+#         try:
+#             offset = get_broker_offset()
+#             with lock:
+#                 assets = list(ACTIVE_STREAMS.items())
+            
+#             for sys_sym, meta in assets:
+#                 rates = mt5.copy_rates_from_pos(meta['mt5_symbol'], meta['tf'], 0, 1)
+#                 if rates is not None and len(rates) > 0:
+#                     rate = rates[0]
+#                     ts_utc_ms = to_utc_ms(rate['time'], offset)
+#                     curr_vol = float(rate['tick_volume'])
+#                     curr_close = float(rate['close'])
+                    
+#                     prev = last_sent_state.get(sys_sym)
+#                     if (prev is None or ts_utc_ms > prev['ts'] or 
+#                         curr_vol != prev['vol'] or curr_close != prev['c']):
+                        
+#                         payload = {
+#                             "asset_id": f"assets:{sys_sym.upper()}:{SOURCE_ID}",
+#                             "ts": ts_utc_ms,
+#                             "open": float(rate['open']),
+#                             "high": float(rate['high']),
+#                             "low": float(rate['low']),
+#                             "close": curr_close,
+#                             "volume": curr_vol,
+#                             "source": SOURCE_ID
+#                         }
+#                         producer.send(f"{sys_sym.lower()}_market_data", value=payload)
+#                         last_sent_state[sys_sym] = {'ts': ts_utc_ms, 'vol': curr_vol, 'c': curr_close}
+#             time.sleep(1) 
+#         except Exception as e:
+#             print(f"Stream Loop Error: {e}")
+#             time.sleep(2)
+
+# # --- COMMAND HANDLERS ---
+
+# def handle_sync(command, producer):
+#     """Fills history from a point forward and enables live streaming."""
+#     sys_sym = command['system_symbol']
+#     broker_sym = command['mt5_symbol']
+#     start_ts_ms = command['start_timestamp_ms']
+#     tf_str = command.get('timeframe', 'M15')
+#     tf = TIMEFRAME_MAP.get(tf_str, mt5.TIMEFRAME_M15)
+    
+#     print(f"[*] SYNC: {sys_sym} from {datetime.fromtimestamp(start_ts_ms/1000.0, tz=timezone.utc)}")
+
+#     offset = get_broker_offset()
+#     if not mt5.symbol_select(broker_sym, True):
+#         print(f"[!] Symbol {broker_sym} not found.")
+#         return
+
+#     current_pointer_ms = start_ts_ms
+#     now_utc_ms = int(time.time() * 1000)
+#     total_bars = 0
+
+#     while current_pointer_ms < (now_utc_ms - 60000):
+#         # Convert UTC ms to broker naive datetime
+#         start_date = datetime.fromtimestamp((current_pointer_ms / 1000.0) + offset, tz=timezone.utc).replace(tzinfo=None)
+#         rates = mt5.copy_rates_from(broker_sym, tf, start_date, 1000)
+
+#         if rates is None or len(rates) == 0:
+#             break
+
+#         new_max_ts = current_pointer_ms
+#         for rate in rates:
+#             ts_utc_ms = to_utc_ms(rate['time'], offset)
+#             if ts_utc_ms > current_pointer_ms:
+#                 payload = {
+#                     "asset_id": f"assets:{sys_sym.upper()}:{SOURCE_ID}",
+#                     "ts": ts_utc_ms,
+#                     "open": float(rate['open']),
+#                     "high": float(rate['high']),
+#                     "low": float(rate['low']),
+#                     "close": float(rate['close']),
+#                     "volume": float(rate['tick_volume']),
+#                     "source": SOURCE_ID
+#                 }
+#                 producer.send(f"{sys_sym.lower()}_market_data", value=payload)
+#                 new_max_ts = max(new_max_ts, ts_utc_ms)
+#                 total_bars += 1
+        
+#         if new_max_ts == current_pointer_ms: break
+#         current_pointer_ms = new_max_ts
+#         if len(rates) < 1000: break
+
+#     with lock:
+#         ACTIVE_STREAMS[sys_sym] = {"mt5_symbol": broker_sym, "last_ts": current_pointer_ms, "tf": tf}
+    
+#     print(f"[+] SYNC Done: {sys_sym} ({total_bars} bars).")
+#     producer.flush()
+
+# def handle_heal(command, producer):
+#     """Self-healing: Fetches a fixed window of time to fill gaps."""
+#     sys_sym = command['system_symbol']
+#     broker_sym = command['mt5_symbol']
+#     start_ms = command['start_timestamp_ms']
+#     end_ms = command.get('end_timestamp_ms', int(time.time() * 1000))
+#     tf = TIMEFRAME_MAP.get(command.get('timeframe', 'M15'), mt5.TIMEFRAME_M15)
+    
+#     offset = get_broker_offset()
+    
+#     # Convert UTC MS to Broker Local Datetime (Naive)
+#     from_date = datetime.fromtimestamp((start_ms / 1000.0) + offset, tz=timezone.utc).replace(tzinfo=None)
+#     to_date = datetime.fromtimestamp((end_ms / 1000.0) + offset, tz=timezone.utc).replace(tzinfo=None)
+
+#     print(f"🩹 [HEAL] Request for {sys_sym} window: {from_date} to {to_date}")
+
+#     rates = mt5.copy_rates_range(broker_sym, tf, from_date, to_date)
+
+#     if rates is not None and len(rates) > 0:
+#         for rate in rates:
+#             ts_utc_ms = to_utc_ms(rate['time'], offset)
+#             payload = {
+#                 "asset_id": f"assets:{sys_sym.upper()}:{SOURCE_ID}",
+#                 "ts": ts_utc_ms,
+#                 "open": float(rate['open']),
+#                 "high": float(rate['high']),
+#                 "low": float(rate['low']),
+#                 "close": float(rate['close']),
+#                 "volume": float(rate['tick_volume']),
+#                 "source": SOURCE_ID
+#             }
+#             producer.send(f"{sys_sym.lower()}_market_data", value=payload)
+#         print(f"✅ [HEAL] Dispatched {len(rates)} bars for {sys_sym}")
+#     else:
+#         print(f"⚠️ [HEAL] No data found for {sys_sym} in requested range.")
+#     producer.flush()
+
+# # --- MAIN ENTRY ---
+
+# def main():
+#     if not mt5.initialize(path=MT5_PATH):
+#         print(f"FAILED to initialize MT5: {mt5.last_error()}")
+#         update_health_status(False)
+#         return
+
+#     print(f"🚀 MT5 Worker Online: {SOURCE_ID}")
+#     producer = get_kafka_producer()
+    
+#     # consumer = KafkaConsumer(
+#     #     CONTROL_TOPIC,
+#     #     bootstrap_servers=KAFKA_BROKERS,
+#     #     group_id=f"mt5_worker_{SOURCE_ID}",
+#     #     value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+#     # )
+    
+#     # consumer = KafkaConsumer(
+#     #     CONTROL_TOPIC,
+#     #     bootstrap_servers=KAFKA_BROKERS,
+#     #     group_id=f"mt5_worker_{SOURCE_ID}_v2", # Change group name to force a fresh start
+#     #     value_deserializer=lambda v: json.loads(v.decode('utf-8')),
+#     #     auto_offset_reset='latest' # Ensure it only listens for NEW commands
+#     # )
+    
+#     consumer = KafkaConsumer(
+#         CONTROL_TOPIC,
+#         bootstrap_servers=KAFKA_BROKERS,
+#         group_id=f"mt5_worker_v2{int(time.time())}", # Fresh group every start
+#         value_deserializer=lambda v: json.loads(v.decode('utf-8')),
+#         auto_offset_reset='latest' # IMPORTANT: Look for commands sent just before Python started
+#     )
+
+#     threading.Thread(target=heartbeat_loop, args=(producer,), daemon=True).start()
+#     threading.Thread(target=stream_loop, args=(producer,), daemon=True).start()
+
+#     try:
+#         for message in consumer:
+#             cmd = message.value
+#             command_type = cmd.get("command")
+            
+#             if command_type == "SYNC":
+#                 handle_sync(cmd, producer)
+#             elif command_type == "HEAL":
+#                 handle_heal(cmd, producer)
+#     except Exception as e:
+#         print(f"Main Consumer Error: {e}")
+#     finally:
+#         update_health_status(False)
+#         mt5.shutdown()
+
+# if __name__ == "__main__":
+#     main()

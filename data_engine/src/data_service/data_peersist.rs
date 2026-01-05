@@ -1,11 +1,18 @@
+
+// data_persist.rs 
 use anyhow::{Result};
 use log::{debug,error, info};
 use sqlx::{QueryBuilder, Postgres};
 use crate::persistable::Persistable;
+use shared_models::data_model::DataService;
+use async_trait::async_trait; 
+use crate::traits::DataPersistExt;
 
-impl super::DataService {
+#[async_trait]
+impl DataPersistExt for DataService {
 
-    pub async fn persist_data<T: Persistable>(&self, items: &[T]) -> Result<()> {
+    async fn persist_data<T>(&self, items: &[T]) -> Result<()> 
+    where T: Persistable + Send + Sync,{
         if items.is_empty() {
             return Ok(());
         }

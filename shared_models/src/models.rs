@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 // Matches the 'assets' table schema
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, PartialEq)]
-pub struct AssetInfo {
+pub struct AssetMetadata {
     pub id: String,
     pub symbol: String,
     pub timezone: String,

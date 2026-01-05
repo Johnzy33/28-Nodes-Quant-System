@@ -15,3 +15,5 @@ sqlx = {workspace = true}
 chrono-tz ="0.10.4"
 strum_macros= {workspace = true}
 strum= {workspace = true}   
+async-trait ={ workspace = true}
+rdkafka = { workspace = true }

@@ -61,37 +61,21 @@ pub struct TradeSignal {
 // ====================================================================
 
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumString, Display)]
-#[derive(Type)]
-#[sqlx(type_name = "TEXT")]
-pub enum MarketType {
-    Bullish,
-    Bearish,
-    FailedBearish,
-    FailedBullish,
-    BullishReversal,
-    BearishReversal,
-    PureIndecision,
-    Other,
-}
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumString, Display)]
-#[derive(Type)]
-#[sqlx(type_name = "TEXT")]
-pub enum MarketSubtype {
-    FailedBearish,
-    FailedBullish,
-    BullishReversal,
-    BearishReversal,
-    PureIndecision,
-    Other,
-}
+
+// #[derive(Debug, PartialEq, Clone, Copy, EnumString, Display)]
+// #[derive(Type)]
+// #[sqlx(type_name = "TEXT")]
+// pub enum MarketSubtype {
+//     FailedBearish,
+//     FailedBullish,
+//     BullishReversal,
+//     BearishReversal,
+//     PureIndecision,
+//     Other,
+// }
 
 // ====================================================================
 //  MarketClassification Struct
 // ====================================================================
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct MarketClassification {
-    pub classification: MarketType,
-}

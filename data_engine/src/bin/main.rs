@@ -1,52 +1,10 @@
-// src/bin/run_master_etl.rs
-// Run with: cargo run --bin run_master_etl
-
-// use anyhow::Result;
-// use std::env;
-// use dotenvy;
-// use log::info;
-
-
-// use database_engine::runtime::setup_database_pool;
-// // You might need to add `env_logger::init();` if you haven't set up logging
-
-// #[tokio::main]
-// async fn main() -> Result<()> {
-//     // Initialize logging for the 'info!' calls in the runners
-//     env_logger::init();
-//     dotenvy::dotenv().ok();
-
-
-//     // 2. Connect to DB
-//     // Use a higher connection limit since the orchestrator runs multiple parallel tasks internally.
-//     let pool = setup_database_pool().await?;
-
-    
-
-//     // 4. Run the Master Orchestrator
-//     // We pass a reference to the pool, and the orchestrator clones it for its sub-tasks.
-//     run_all_assets_master_etl(&pool)
-//         .await
-//         .map_err(|e| {
-//             // Log the full error chain if the orchestrator fails
-//             eprintln!("🔴 MASTER ETL FAILED! Error: {:?}", e);
-//             e
-//         })?;
-
-    
-    
-//     Ok(())
-// }
-
-
-// src/bin/run_master_etl.rs
-// Run with: cargo run --bin run_master_etl
 
 use anyhow::Result;
 use dotenvy;
 use log::{info, error};
 use database_engine::runtime;
-use data_engine::data_service; 
+use shared_models::data_model; 
+use data_engine::data_service::traits::DataOrchestratorExt;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -63,7 +21,7 @@ async fn main() -> Result<()> {
 
     // 3. Initialize DataService
     // We pass the pool into the service. 
-    let data_service = data_service::DataService::new(pool);
+    let data_service = data_model::DataService::new(pool);
 
     // 4. Run the Master Orchestrator
     // We call the method directly on the service instance.

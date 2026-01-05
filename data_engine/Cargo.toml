@@ -24,6 +24,8 @@ deadpool-postgres =  {workspace = true}
 sqlx = {workspace = true}
 futures = {workspace = true}
 lazy_static = {workspace = true}
+async-trait ={ workspace = true}
+clokwerk = {workspace = true}
 
 
 

@@ -1,11 +1,39 @@
 
 use chrono::{DateTime, Utc, NaiveDate}; 
+use sqlx::{PgPool, Result as SqlxResult};
 use sqlx::{FromRow};
-use shared_models::signal_type::{MarketType};
+use crate::market_classification::MarketType;
+use anyhow::{Context, Result};
+ use rdkafka::{
+    producer::{FutureProducer, FutureRecord},
+    config::ClientConfig,
+};
+use std::env;
 
 
 
+#[derive(Clone)]
+pub struct DataService {
+pub pool: PgPool,
 
+}
+
+impl DataService{
+    pub fn new(pool: PgPool) -> Self {
+        DataService { pool }
+    }  
+
+    pub async fn initialize_producer() -> Result<FutureProducer> {
+    let brokers = env::var("KAFKA_BROKERS").unwrap_or_else(|_| "127.0.0.1:9092".to_string());
+
+    let producer: FutureProducer = ClientConfig::new()
+        .set("bootstrap.servers", &brokers)
+        .create()
+        .context("Producer creation error")?;
+
+    Ok(producer)
+}
+}
 // ====================================================================
 // 1. Raw Session Data (Input - mirrors the session_base table)
 // ====================================================================
@@ -50,6 +78,29 @@ pub struct ClassifiedSession {
     pub close: f64,
     pub volume: f64,
     pub bars: i64,
+    
+}
+
+impl Default for ClassifiedSession {
+    fn default() -> Self {
+        let now = Utc::now();
+        Self {
+            trading_date: now.date_naive(),
+            asset_id: String::default(),
+            session_name: "Unknown".to_string(),
+            session_type: MarketType::Other, // Or your default variant
+            start_ts: now,
+            end_ts: now,
+            open: 0.0,
+            high: f64::MIN, // Set to MIN so first tick always updates it
+            high_ts: now,
+            low: f64::MAX,  // Set to MAX so first tick always updates it
+            low_ts: now,
+            close: 0.0,
+            volume: 0.0,
+            bars: 0,
+        }
+    }
 }
 
 
@@ -85,6 +136,12 @@ pub struct Classified8HrBlock {
     pub bars: i64,
     pub block_type: MarketType, // Use String for persistence if MarketType is not directly serializable
     // pub consolidation_subtype: MarketSubtype, // Use String for persistence if MarketSubtype is not directly serializable
+    
+    pub body_ratio: f64,
+    pub up_wick_ratio: f64,
+    pub lo_wick_ratio: f64,
+    // pub total_wick_ratio: f64,
+    pub session_range: f64,
 }
 
 
@@ -143,6 +200,11 @@ pub struct ClassifiedDailyView {
     pub prior_day_low: Option<f64>,
     pub prior_week_high: Option<f64>,
     pub prior_week_low: Option<f64>,
+    pub body_ratio: f64,
+    pub up_wick_ratio: f64,
+    pub lo_wick_ratio: f64,
+    // pub total_wick_ratio: f64,
+    pub day_range: f64,
 }
 
 
@@ -161,6 +223,8 @@ pub struct RawDailyView {
     pub close: f64,
     pub volume: i64,
     pub bars: i64,
+    pub start_ts: DateTime<Utc>,
+    pub end_ts: DateTime<Utc>,
     pub high_ts: DateTime<Utc>,
     pub high_session: String,
     pub low_ts: DateTime<Utc>,
@@ -192,6 +256,13 @@ pub struct ClassifiedWeeklyView {
     pub low_trading_date: chrono::NaiveDate,
     pub low_ts: DateTime<Utc>,
     pub low_session: String,
+    pub start_ts: DateTime<Utc>,
+    pub end_ts: DateTime<Utc>,
+    pub body_ratio: f64,
+    pub up_wick_ratio: f64,
+    pub lo_wick_ratio: f64,
+    // pub total_wick_ratio: f64,
+    pub week_range: f64,
 }
 
 // ====================================================================
@@ -235,6 +306,8 @@ pub struct ClassifiedMonthlyView {
     pub monthly_type: MarketType,
     
     // Metadata fields
+    pub start_ts: DateTime<Utc>,
+    pub end_ts: DateTime<Utc>,
     pub start_trading_date: chrono::NaiveDate, // The date of the first trade (first week's start)
     pub end_trading_date: chrono::NaiveDate,   // The date of the last trade (last week's start)
     pub high_trading_date: chrono::NaiveDate,
@@ -243,6 +316,12 @@ pub struct ClassifiedMonthlyView {
     pub low_trading_date: chrono::NaiveDate,
     pub low_ts: DateTime<Utc>,
     pub low_session: String,
+
+    pub body_ratio: f64,
+    pub up_wick_ratio: f64,
+    pub lo_wick_ratio: f64,
+    //pub total_wick_ratio: f64,
+    pub month_range: f64,
 }
 
 // ====================================================================
@@ -262,6 +341,8 @@ pub struct RawMonthlyView {
     pub bars: i64,
     pub start_trading_date: chrono::NaiveDate,
     pub end_trading_date: chrono::NaiveDate,
+    //pub start_ts: DateTime<Utc>,
+   // pub end_ts: DateTime<Utc>,
     pub high_trading_date: chrono::NaiveDate,
     pub high_ts: DateTime<Utc>,
     pub high_session: String,
@@ -294,4 +375,12 @@ pub struct ClassifiedYearlyView {
     pub low_trading_date: chrono::NaiveDate,
     pub low_ts: DateTime<Utc>,
     pub low_session: String,
+    // pub start_ts: DateTime<Utc>,
+    // pub end_ts: DateTime<Utc>,
+
+    pub body_ratio: f64,
+    pub up_wick_ratio: f64,
+    pub lo_wick_ratio: f64,
+    //pub total_wick_ratio: f64,
+    pub year_range: f64,
 }

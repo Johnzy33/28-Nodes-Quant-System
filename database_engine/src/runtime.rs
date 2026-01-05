@@ -15,7 +15,9 @@ pub type Pool = PgPool;
 
 async fn register_all_assets(pool: &PgPool) -> Result<()> {
     
-    let path = Path::new("database_engine/config/assets.json").to_owned();
+    //let path = Path::new("database_engine/config/assets.json").to_owned();
+    let path = env::var("ASSET_SEED")
+        .context("Asset Path not found")?;
 
     // Execute synchronous file I/O on a blocking task thread
     let data = task::spawn_blocking(move || {
@@ -76,7 +78,7 @@ pub async fn setup_database_pool() -> Result<Pool> {
         .await
         .context("Failed to build PostgreSQL connection pool using sqlx")?;
 
-    register_all_assets(&pool).await?;
+    //register_all_assets(&pool).await?;
 
     info!("Database Pool Ready....");
 

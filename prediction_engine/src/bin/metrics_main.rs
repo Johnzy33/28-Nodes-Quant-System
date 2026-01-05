@@ -6,6 +6,7 @@ use log::info;
 
 use database_engine::runtime;
 use prediction_engine::metric::metrics_pipeline;
+//use prediction_engine::vortex::vortex::{VortexSnapshot, VortexPoint};
 
 // You might need to add `env_logger::init();` if you haven't set up logging
 
@@ -24,15 +25,25 @@ async fn main() -> Result<()> {
     info!("==================================================");
     info!("📈 Starting Full ETL Pipeline for All Assets");
     info!("==================================================");
+    
 
     
-    metrics_pipeline::run_master_asset_metrics(&pool)
+    // metrics_pipeline::run_master_asset_metrics(&pool)
+    //     .await
+    //     .map_err(|e| {
+    //         // Log the full error chain if the orchestrator fails
+    //         eprintln!("🔴 MASTER ETL FAILED! Error: {:?}", e);
+    //         e
+    //     })?;
+    
+    metrics_pipeline::vortex(&pool)
         .await
         .map_err(|e| {
             // Log the full error chain if the orchestrator fails
             eprintln!("🔴 MASTER ETL FAILED! Error: {:?}", e);
             e
         })?;
+    
 
     info!("==================================================");
     info!("✅ All Meterics Completed Successfully.");

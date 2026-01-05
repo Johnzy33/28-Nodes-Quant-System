@@ -1,5 +1,6 @@
-use crate::symmetric_grid::SymmetricPriceGrid; // Assuming SymmetricPriceGrid is in a sibling module
+use crate::symmetric_grid::SymmetricPriceGrid; 
 use crate::price_grid::{PriceLevel, GridLayer};
+
 
 #[derive(Debug, Clone)]
 pub struct AnchoredGrid {
@@ -42,4 +43,30 @@ impl AnchoredGrid {
     pub fn get_price(&self, level: PriceLevel) -> Option<f64> {
         self.spg.get_level_price(level)
     }
+
+    pub fn update(&mut self, price: f64) {
+        let mut changed = false;
+        let mut new_high = self.spg.high;
+        let mut new_low = self.spg.low;
+
+        if price > new_high {
+            new_high = price;
+            changed = true;
+        }
+        if price < new_low {
+            new_low = price;
+            changed = true;
+        }
+
+        if changed {
+            // Re-initialize the SPG with new anchors to shift all levels
+            self.spg = SymmetricPriceGrid::new(new_high, new_low);
+        }
+    }
+
+    
 }
+
+
+
+

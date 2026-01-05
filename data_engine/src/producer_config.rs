@@ -22,13 +22,23 @@ pub struct AssetIngestJob {
     pub enabled: bool,
 }
 
+// #[derive(Debug, Serialize, Deserialize)]
+// pub struct SyncCommand {
+//     pub command: String,          // e.g., "SYNC"
+//     pub system_symbol: String,    // e.g., "US100"
+//     pub mt5_symbol: String,       // e.g., "NDX100"
+//     pub start_timestamp_ms: i64,  // The HWM from your DB
+//     pub timeframe: String,        // e.g., "M1"
+// }
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyncCommand {
-    pub command: String,          // e.g., "SYNC"
-    pub system_symbol: String,    // e.g., "US100"
-    pub mt5_symbol: String,       // e.g., "NDX100"
-    pub start_timestamp_ms: i64,  // The HWM from your DB
-    pub timeframe: String,        // e.g., "M1"
+    pub command: String,            // "SYNC" or "HEAL"
+    pub system_symbol: String,
+    pub mt5_symbol: String,
+    pub start_timestamp_ms: i64,
+    pub end_timestamp_ms: Option<i64>, // New: specific window for healing
+    pub timeframe: String,
 }
 /// The overall configuration for the ingestion coordinator, loaded from a config file.
 #[derive(Debug, Deserialize)]

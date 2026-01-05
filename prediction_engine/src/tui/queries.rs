@@ -1,7 +1,7 @@
 use anyhow::{Result, Context, anyhow};
 use sqlx::{PgPool, FromRow}; // Use sqlx::PgPool and FromRow
 use chrono::NaiveDate;
-use shared_models::{AssetInfo, FciSignalOutput, DcsScore};
+use shared_models::{AssetMetadata, FciSignalOutput, DcsScore};
 use tokio::sync::mpsc::Sender; 
 use crate::tui::events::TuiEvent; 
 
@@ -20,11 +20,11 @@ const FCI_SIGNAL_FIELDS: &str =
 // must now derive sqlx::FromRow for these functions to compile.
 
 // --- 1. Asset List Fetch ---
-pub async fn fetch_asset_list(pool: &PgPool) -> Result<Vec<AssetInfo>> {
+pub async fn fetch_asset_list(pool: &PgPool) -> Result<Vec<AssetMetadata>> {
     let query = format!("SELECT {} FROM assets WHERE active = TRUE ORDER BY symbol ASC", ASSET_INFO_FIELDS);
     
     // 🎯 SQLX: Use query_as for automatic mapping
-    let assets = sqlx::query_as::<_, AssetInfo>(&query)
+    let assets = sqlx::query_as::<_, AssetMetadata>(&query)
         .fetch_all(pool)
         .await
         .context("Failed to fetch asset list")?;

@@ -17,4 +17,5 @@ dotenvy = {workspace = true}
 data_engine = { path = "../data_engine" }
 database_engine ={path = "../database_engine"}
 prediction_engine = { path = "../prediction_engine" }
-order_engine = { path = "../order_engine" }
+shared_models ={ path = "../shared_models"}
+# order_engine = { path = "../order_engine" }

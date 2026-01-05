@@ -39,3 +39,6 @@ lazy_static = "1.4"
 zmq = "0.10.0"
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
 async-trait = "0.1.68"
+dashmap = "6.1.0"
+clokwerk = "0.4.0"
+

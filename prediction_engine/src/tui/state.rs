@@ -21,7 +21,7 @@ pub struct DcsState { pub analysis_date: NaiveDate, }
 
 pub struct GlobalState {
     pub pool: Pool, // Use the consistent Pool type
-    pub asset_list: Vec<shared_models::AssetInfo>,
+    pub asset_list: Vec<shared_models::AssetMetadata>,
     pub selected_asset_index: usize,
     pub is_loading: bool,
     pub status_message: String,

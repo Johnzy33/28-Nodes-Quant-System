@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::MarketRatios;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MarketData {
@@ -12,4 +14,5 @@ pub struct MarketData {
     pub volume: f64,
     pub seq: Option<u64>,
     pub source: Option<String>,
+    pub ratios: MarketRatios,
 }
