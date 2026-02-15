@@ -33,7 +33,7 @@ impl MarketDataHandler for SpgOrchestrator {
         }
 
         // Normal Live Logic
-        let mut tracker = self.trackers.get_mut(&data.asset_id).unwrap();
+        let mut tracker = self.trackers.get_mut(data.asset_id.as_str()).unwrap();
         tracker.process_live_update(data, &self.data_service);
     }
 }

@@ -20,6 +20,9 @@ producer_config::IngestionCoordinatorConfig};
 use data_engine::traits::{DataIngestionExt, DataMaintenanceExt};
 
 
+fn main()  {}
+
+
 
 
 // #[tokio::main]
@@ -210,90 +213,89 @@ use data_engine::traits::{DataIngestionExt, DataMaintenanceExt};
 // }
 
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    env_logger::init();
-    dotenvy::dotenv().ok();
 
-    let pool = setup_database_pool().await.context("DB Pool failed")?;
+//     env_logger::init();
+//     dotenvy::dotenv().ok();
+
+//     let pool = setup_database_pool().await.context("DB Pool failed")?;
     
-    // 1. Initialize Main Guy & Orchestrator
-    let data_service = DataService::new(pool.clone());
+//     // 1. Initialize Main Guy & Orchestrator
+//     let data_service = DataService::new(pool.clone());
     
-    // Initialize SPG (The orchestrator will use data_service for DB views)
-    let orchestrator = prediction_engine::symmetric_price_grid::orchestrator::init_spg_engine(data_service.clone()).await
-        .map_err(|e| anyhow::anyhow!("SPG Init failed: {}", e))?;
+//     // Initialize SPG (The orchestrator will use data_service for DB views)
+//     let orchestrator = prediction_engine::symmetric_price_grid::orchestrator::init_spg_engine(data_service.clone()).await
+//         .map_err(|e| anyhow::anyhow!("SPG Init failed: {}", e))?;
 
-    let handler: Arc<dyn MarketDataHandler> = orchestrator.clone();
+//     let handler: Arc<dyn MarketDataHandler> = orchestrator.clone();
 
-    // 2. Create the Sync Signal Channel
-    let (sync_tx, sync_rx) = tokio::sync::watch::channel(false);
-    let watchdog_state = WatchdogState::new();
+//     // 2. Create the Sync Signal Channel
+//     let (sync_tx, sync_rx) = tokio::sync::watch::channel(false);
+//     let watchdog_state = WatchdogState::new();
 
-    // 3. Run all three services concurrently
-    tokio::try_join!(
-        // TASK A: MT5 Watchdog (External Process Manager)
-        async {
-            let python_worker_path = env::var("PYTHON_WORKER_PATH").unwrap_or_else(|_| "./mt5_worker.py".to_string());
-            info!("🛠️ Starting MT5 Watchdog...");
-            let mut watchdog = Mt5Watchdog::new(&python_worker_path, watchdog_state.clone());
-            watchdog.run().await.context("Watchdog service failed")
-        },
+//     // 3. Run all three services concurrently
+//     tokio::try_join!(
+//         // TASK A: MT5 Watchdog (External Process Manager)
+//         async {
+//             let python_worker_path = env::var("PYTHON_WORKER_PATH").unwrap_or_else(|_| "./mt5_worker.py".to_string());
+//             info!("🛠️ Starting MT5 Watchdog...");
+//             let mut watchdog = Mt5Watchdog::new(&python_worker_path, watchdog_state.clone());
+//             watchdog.run().await.context("Watchdog service failed")
+//         },
 
-        // TASK B: Ingestion & Maintenance (The "Main Guy" Extensions)
-        async {
-            // Initialize the shared Producer
-            let producer = Arc::new(DataService::initialize_producer().await?);
+//         // TASK B: Ingestion & Maintenance (The "Main Guy" Extensions)
+//         async {
+//             // Initialize the shared Producer
+//             let producer = Arc::new(DataService::initialize_producer().await?);
             
-            // Load Config
-            let config_path = env::var("INGESTION_CONFIG_PATH").context("INGESTION_CONFIG_PATH not set")?;
-            let config = Arc::new(IngestionCoordinatorConfig::load_from_file(&config_path)?);
+//             // Load Config
+//             let config_path = env::var("INGESTION_CONFIG_PATH").context("INGESTION_CONFIG_PATH not set")?;
+//             let config = Arc::new(IngestionCoordinatorConfig::load_from_file(&config_path)?);
 
-            // 1. Dispatch HWM Sync Requests
-            data_service.publish_startup_sync(producer.clone(), config.clone()).await?;
+//             // 1. Dispatch HWM Sync Requests
+//             data_service.publish_startup_sync(producer.clone(), config.clone()).await?;
 
-            // 2. Start Background Healing (Daily/Weekend)
-            data_service.start_maintenance_loop(producer.clone(), config.clone()).await?;
+//             // 2. Start Background Healing (Daily/Weekend)
+//             data_service.start_maintenance_loop(producer.clone(), config.clone()).await?;
 
-            // 3. Run Live Ingestion Engine (This blocks and does the "Tap" to SPG)
-            data_service.run_ingestion(
-                config, 
-                handler, 
-                watchdog_state.clone(), 
-                sync_tx
-            ).await.context("Ingestion Engine failed")
-        },
+//             // 3. Run Live Ingestion Engine (This blocks and does the "Tap" to SPG)
+//             data_service.run_ingestion(
+//                 config, 
+//                 handler, 
+//                 watchdog_state.clone(), 
+//                 sync_tx
+//             ).await.context("Ingestion Engine failed")
+//         },
 
-        // TASK C: The "Post-Sync" Bootstrapper
-        async {
-            let mut rx = sync_rx;
-            info!("⏳ SPG Bootstrapper: Waiting for Kafka Sync to reach 0 lag...");
+//         // TASK C: The "Post-Sync" Bootstrapper
+//         async {
+//             let mut rx = sync_rx;
+//             info!("⏳ SPG Bootstrapper: Waiting for Kafka Sync to reach 0 lag...");
 
-            // Wait until ingestion.rs sends the 'true' signal
-            while !*rx.borrow() {
-                if rx.changed().await.is_err() {
-                    return Err(anyhow::anyhow!("Sync signal channel closed unexpectedly"));
-                }
-            }
+//             // Wait until ingestion.rs sends the 'true' signal
+//             while !*rx.borrow() {
+//                 if rx.changed().await.is_err() {
+//                     return Err(anyhow::anyhow!("Sync signal channel closed unexpectedly"));
+//                 }
+//             }
 
-            info!("🛡️ Sync Complete. Running Master ETL...");
-            orchestrator.run_master_etl().await
-                .map_err(|e| anyhow::anyhow!("Master ETL failed: {}", e))?;
+//             info!("🛡️ Sync Complete. Running Master ETL...");
+//             orchestrator.run_master_etl().await
+//                 .map_err(|e| anyhow::anyhow!("Master ETL failed: {}", e))?;
 
-            info!("🥾 Anchoring Grids from fresh DB state...");
-            orchestrator.bootstrap_assets().await
-                .map_err(|e| anyhow::anyhow!("Bootstrap failed: {}", e))?;
+//             info!("🥾 Anchoring Grids from fresh DB state...");
+//             orchestrator.bootstrap_assets().await
+//                 .map_err(|e| anyhow::anyhow!("Bootstrap failed: {}", e))?;
 
-            // FINAL STEP: Flip the switch to enable on_price_update logic
-            orchestrator.is_live.store(true, std::sync::atomic::Ordering::SeqCst);
-            info!("🚀 SPG Engine is now LIVE and processing ticks.");
+//             // FINAL STEP: Flip the switch to enable on_price_update logic
+//             orchestrator.is_live.store(true, std::sync::atomic::Ordering::SeqCst);
+//             info!("🚀 SPG Engine is now LIVE and processing ticks.");
             
-            // This task is done, we just keep it alive so try_join doesn't exit
-            std::future::pending::<()>().await; 
-        //    run_tui(orchestrator.clone()).await?;
-            Ok(())
-        }
-    )?;
+//             // This task is done, we just keep it alive so try_join doesn't exit
+//             std::future::pending::<()>().await; 
+//         //    run_tui(orchestrator.clone()).await?;
+//             Ok(())
+//         }
+//     )?;
 
-    Ok(())
-}
+//     Ok(())
+// }

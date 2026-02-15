@@ -8,8 +8,9 @@
 // use shared_models::data_model as dm;
 // use shared_models::data_model::DataService;
 
-use anyhow::{Result, anyhow};
-use log::info;
+use anyhow::{Result, anyhow, };
+
+use log::{info, error};
 use sqlx::{PgPool, Result as SqlxResult};
 
 // 1. You must import the attribute macro explicitly
@@ -17,41 +18,141 @@ use async_trait::async_trait;
 
 // 2. You must import the trait you defined in traits.rs
 
-use crate::traits::{DataServiceBase, DataPersistExt, DataViewExt};
+use crate::traits::{DataServiceBase, DataPersistExt, DataViewExt, DataIngestionExt};
 
 // 3. Foundation models
 use shared_models::data_model::DataService;
 use shared_models::data_model as dm;
-
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Semaphore;
+use tokio_util::sync::CancellationToken;
+use std::sync::Arc;
+use std::error::Error;
+use crate::producer_config::{IngestionCoordinatorConfig,AssetIngestJob};
+use crate::watchdog::WatchdogState;
+use shared_models::db_models as db;
+//use tracing::{info, error};
 
 #[async_trait]
 impl DataServiceBase for DataService {
-    // /// Constructs the DataService using the pre-initialized connection pool.
-    //  fn new(pool: PgPool) -> Self {
-    // DataService { pool }
-    // }
 
-   // Fetches the maximum timestamp (ts in milliseconds) for a given asset from market_data.
+    async fn run(
+        &self, 
+        addr: &str, 
+        data_service: Arc<DataService>, // This is the Arc holding 'self'
+        state: WatchdogState
+      //  config: IngestionCoordinatorConfig
+    ) -> Result<(), Box<dyn Error>> {
+        
+        let listener = TcpListener::bind(addr).await?;
+        let connection_limit = Arc::new(Semaphore::new(10));
+        let shutdown_token = CancellationToken::new();
+        let state_for_worker = state.clone();
+      //  let shared_config = Arc::new(config);
+
+        info!("🚀 Ingestion Engine Online: {}", addr);
+
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    shutdown_token.cancel();
+                    break;
+                }
+                accept_res = listener.accept() => {
+                    let (socket, _) = accept_res?;
+                    
+                    // Clones for the move
+                   // let cfg = Arc::clone(&shared_config);
+                    let token = shutdown_token.clone();
+                    let permit = Arc::clone(&connection_limit).acquire_owned().await?;
+                    
+                    // FIXED: Clone the Arc handle to the service
+                    let service_handle = Arc::clone(&data_service); 
+                    let state_for_worker = state.clone();
+
+                    tokio::spawn(async move {
+                        // Now we have all 4 parameters: 
+                        // 1. service_handle (self), 2. socket, 3. state_for_worker, 4. token
+                        if let Err(e) = service_handle.handle_mt5_ingestion(socket, token, state_for_worker).await {
+                            error!("Ingestion worker error: {}", e);
+                        }
+                        drop(permit);
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn run_new(
+            &self, 
+            addr: &str, 
+            dbs: Arc<db::AppDatabases>,
+            data_service: Arc<DataService>, // This is the Arc holding 'self'
+            state: WatchdogState
+        //  config: IngestionCoordinatorConfig
+        ) -> Result<(), Box<dyn Error>> {
+            
+            let listener = TcpListener::bind(addr).await?;
+            let connection_limit = Arc::new(Semaphore::new(10));
+            let shutdown_token = CancellationToken::new();
+            
+        //  let shared_config = Arc::new(config);
+
+            info!("🚀 Ingestion Engine Online: {}", addr);
+
+            loop {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {
+                        shutdown_token.cancel();
+                        break;
+                    }
+                    accept_res = listener.accept() => {
+                        let (socket, _) = accept_res?;
+                        
+                        // Clones for the move
+                    // let cfg = Arc::clone(&shared_config);
+                        let token = shutdown_token.clone();
+                        let permit = Arc::clone(&connection_limit).acquire_owned().await?;
+                        
+                        // FIXED: Clone the Arc handle to the service
+                        let service_handle = Arc::clone(&data_service); 
+                        let state_for_worker = state.clone();
+                        let dbs_for_worker = dbs.clone();
+
+                        tokio::spawn(async move {
+                            // Now we have all 4 parameters: 
+                            // 1. service_handle (self), 2. socket, 3. dbs_for_worker, 4. token, 5. state_for_worker
+                            if let Err(e) = service_handle.handle_mt5_ingestion_new(socket, dbs_for_worker, token, state_for_worker).await {
+                                error!("Ingestion worker error: {}", e);
+                            }
+                            drop(permit);
+                        });
+                    }
+                }
+            }
+            Ok(())
+        }
+
+
     async fn get_market_data_high_watermark(&self, asset_id: &str) -> Result<Option<i64>> {
-        // We query the market_data table where the CSV records end up
+        // 1. Remove * 1000. MT5 needs SECONDS.
+        // 2. Subtract 3600 (1 hour in seconds) to ensure we don't miss the partial current bar.
         let query = r#"
-            SELECT (EXTRACT(EPOCH FROM MAX(time)) * 1000)::BIGINT - 1800000
+            SELECT (EXTRACT(EPOCH FROM MAX(time)))::BIGINT
             FROM market_data
             WHERE asset_id = $1
         "#;
         
-        // sqlx::query_scalar! macro simplifies fetching a single optional value
         let max_ts: SqlxResult<Option<i64>> = sqlx::query_scalar(query)
             .bind(asset_id)
             .fetch_one(&self.pool)
             .await;
 
         match max_ts {
-            // Case 1: Query succeeded. The result is an Option<i64> (either a value or NULL)
             Ok(ts_option) => Ok(ts_option), 
-            
-            // Case 2: Query failed (e.g., connection error)
-            Err(e) => Err(anyhow!("Failed to fetch market data high water mark: {}", e)),
+            Err(e) => Err(anyhow!("Failed to fetch HWM: {}", e)),
         }
     }
 

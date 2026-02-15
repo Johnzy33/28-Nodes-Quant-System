@@ -1,0 +1,72 @@
+
+
+DEFINE FUNCTION fn::classify_market($o: float, $h: float, $l: float, $c: float) {
+    -- Calculate Ratios
+    let $range = math::max([($h - $l), 0.0000000001]);
+    let $body_size = math::abs($c - $o);
+    let $rb_high = math::max([$c, $o]);
+    let $rb_low = math::min([$c, $o]);
+    
+    let $body_ratio = $body_size / $range;
+    let $up_wick = ($h - $rb_high) / $range;
+    let $lo_wick = ($rb_low - $l) / $range;
+    let $tot_wick = $up_wick + $lo_wick;
+    let $is_bull = $c > $o;
+
+    -- Path A: Large Body (>= 25%)
+    IF $body_ratio >= 0.25 {
+        let $multiplier = IF $body_ratio < 0.35 { 1.5 } 
+                          ELSE IF $body_ratio < 0.50 { 2.0 } 
+                          ELSE { 2.5 } END;
+        
+        IF $tot_wick > ($body_ratio * $multiplier) { RETURN "PureIndecision" };
+
+        IF $is_bull {
+            IF $up_wick >= 0.30 { RETURN "FailedBullish" }
+            RETURN "Bullish"
+        } ELSE {
+            IF $lo_wick >= 0.30 { RETURN "FailedBearish" }
+            RETURN "Bearish"
+        }
+    } 
+    -- Path B: Small Body (< 25%)
+    ELSE {
+        IF $lo_wick >= 0.60 { RETURN "BullishReversal" };
+        IF $up_wick >= 0.60 { RETURN "BearishReversal" };
+
+        IF math::abs($up_wick - $lo_wick) < 0.15 { RETURN "PureIndecision" };
+
+        RETURN IF $lo_wick > $up_wick { "BullishReversal" } 
+               ELSE { "BearishReversal" } END;
+    }
+};
+
+
+
+DEFINE FUNCTION fn::custom_session_group($ts: datetime) {
+    -- Shift the datetime to New York and then extract the hour
+    LET $ny_time = time::timezone($ts, 'America/New_York');
+    LET $hour = <int> time::hour($ny_time);
+
+    RETURN IF $hour >= 2 AND $hour <= 7 {
+        "LN"
+    } ELSE IF $hour >= 8 AND $hour <= 11 {
+        "NYAM"
+    } ELSE IF $hour >= 12 AND $hour <= 13 {
+        "NYL"
+    } ELSE IF $hour >= 14 AND $hour <= 17 {
+        "NYPM"
+    } ELSE IF ($hour >= 18 AND $hour <= 23) OR ($hour >= 0 AND $hour <= 1) {
+        "AS"
+    } ELSE {
+        "Unknown"
+    };
+};
+
+DEFINE FUNCTION fn::New() {
+    LET ctx = fn::g
+    RETURN <datetime>
+};
+
+USE NS trading DB trading_live;
+time::timezone()

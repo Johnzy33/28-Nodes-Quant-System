@@ -59,7 +59,7 @@ impl_persistable!(mm::DailyBaseRateML,
 
 // 4. Transition 2nd Order
 impl_persistable!(mm::Transition2ndOrderML,
-    "INSERT INTO transition_2nd_order_ml (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias, p_6m, count_6m, total_6m, p_1y, count_1y, total_1y, p_all, count_all, total_all) ",
+    "INSERT INTO session_transition_2nd_order_ml (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias, p_6m, count_6m, total_6m, p_1y, count_1y, total_1y, p_all, count_all, total_all) ",
     " ON CONFLICT (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias) DO UPDATE SET p_6m=EXCLUDED.p_6m, count_6m=EXCLUDED.count_6m, total_6m=EXCLUDED.total_6m, p_1y=EXCLUDED.p_1y, count_1y=EXCLUDED.count_1y, total_1y=EXCLUDED.total_1y, p_all=EXCLUDED.p_all, count_all=EXCLUDED.count_all, total_all=EXCLUDED.total_all",
     asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias);
 
@@ -95,7 +95,7 @@ impl_persistable!(mm::DailyOutcome3rdOrderML,
 
 // 9. TCS Scores
 impl_score_persistable!(mm::Tcs2ndOrderML,
-    "INSERT INTO tcs_2nd_order_ml (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias, p_cond_6m, p_base_6m, tcs_score_6m, p_cond_1y, p_base_1y, tcs_score_1y, p_cond_all, p_base_all, tcs_score_all) ",
+    "INSERT INTO session_transition_lift_ml (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias, p_cond_6m, p_base_6m, tcs_score_6m, p_cond_1y, p_base_1y, tcs_score_1y, p_cond_all, p_base_all, tcs_score_all) ",
     " ON CONFLICT (asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias) DO UPDATE SET p_cond_6m=EXCLUDED.p_cond_6m, p_base_6m=EXCLUDED.p_base_6m, tcs_score_6m=EXCLUDED.tcs_score_6m, p_cond_1y=EXCLUDED.p_cond_1y, p_base_1y=EXCLUDED.p_base_1y, tcs_score_1y=EXCLUDED.tcs_score_1y, p_cond_all=EXCLUDED.p_cond_all, p_base_all=EXCLUDED.p_base_all, tcs_score_all=EXCLUDED.tcs_score_all",
     tcs_score_6m, tcs_score_1y, tcs_score_all,
     asset_id, ps2_name, ps2_bias, ps1_name, ps1_bias, cs_name, cs_bias);

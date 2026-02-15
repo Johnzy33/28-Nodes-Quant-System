@@ -28,13 +28,13 @@ async fn main() -> Result<()> {
     
 
     
-    // metrics_pipeline::run_master_asset_metrics(&pool)
-    //     .await
-    //     .map_err(|e| {
-    //         // Log the full error chain if the orchestrator fails
-    //         eprintln!("🔴 MASTER ETL FAILED! Error: {:?}", e);
-    //         e
-    //     })?;
+    metrics_pipeline::run_master_asset_metrics(&pool)
+        .await
+        .map_err(|e| {
+            // Log the full error chain if the orchestrator fails
+            eprintln!("🔴 MASTER ETL FAILED! Error: {:?}", e);
+            e
+        })?;
     
     metrics_pipeline::vortex(&pool)
         .await

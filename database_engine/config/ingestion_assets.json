@@ -6,56 +6,56 @@
       "system_symbol": "JP225",
       "mt5_symbol": "JP225",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "US100",
       "mt5_symbol": "NDX100", 
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "UK100",
       "mt5_symbol": "UK100",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "US2000",
       "mt5_symbol": "US2000",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "US30",
       "mt5_symbol": "US30",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "SPX500",
       "mt5_symbol": "SPX500",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "XAUUSD",
       "mt5_symbol": "XAUUSD",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     },
     {
       "system_symbol": "XAGUSD",
       "mt5_symbol": "XAGUSD",
       "topic_base": "market_data",
-      "timeframe": "M15",
+      "timeframe": "M5",
       "enabled": true
     }
   ]

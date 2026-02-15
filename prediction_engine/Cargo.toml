@@ -28,7 +28,7 @@ async-trait ={ workspace = true}
 # Other necessary dependencies for data processing
 log = { workspace = true }
 env_logger = { workspace = true }
-
+iceoryx2 = { workspace = true, features = ["dev_permissions"] }
 
 #Local Dependencies
 database_engine = { path = "../database_engine" }

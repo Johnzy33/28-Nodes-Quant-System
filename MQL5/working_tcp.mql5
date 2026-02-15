@@ -1,0 +1,114 @@
+
+//+------------------------------------------------------------------+
+//|                                                    pipe_data.mq5 |
+//|                                          Copyright 2025, 28th-Co |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+
+#property strict
+#property version   "1.00"
+
+// 1. Define the 64-byte binary structure (MUST match Rust exactly)
+// We use POD (Plain Old Data) types only for zero-copy compatibility
+struct MultiplexedTick {
+   char   asset_name[10]; // e.g., "US30\0\0\0\0\0"
+   char   _dummy[6];      // Alignment padding for 8-byte boundaries
+   double bid;            // 8 bytes
+   double ask;            // 8 bytes
+   double last;           // 8 bytes
+   long   volume;         // 8 bytes
+   long   time_msc;       // 8 bytes (milliseconds timestamp)
+   uint   flags;          // 4 bytes
+   uint   _end_pad;       // 4 bytes (Total: 64 bytes)
+};
+
+// Input parameters
+input string InpHost = "127.0.0.1";
+input int    InpPort = 9090;
+
+int socket_handle = INVALID_HANDLE;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+`
+int OnInit() {
+   // Reset the socket on start
+   socket_handle = SocketCreate();
+   
+   if(socket_handle == INVALID_HANDLE) {
+      Print("❌ Failed to create socket. Error: ", GetLastError());
+      return(INIT_FAILED);
+   }
+
+   // Connect to the Rust Listener
+   if(!SocketConnect(socket_handle, InpHost, InpPort, 1000)) {
+      Print("❌ Connection to ", InpHost, ":", InpPort, " failed. Error: ", GetLastError());
+      // Tip: Error 5272 means you need to add 127.0.0.1 to Tools -> Options -> Expert Advisors
+      return(INIT_FAILED);
+   }
+
+   Print("🚀 Connected to Rust Engine on ", InpHost, ":", InpPort);
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason) {
+   if(socket_handle != INVALID_HANDLE) {
+      SocketClose(socket_handle);
+      Print("🔌 Socket closed.");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+// Helper function to ensure connection is always alive
+bool CheckConnection() {
+   // If handle is invalid or disconnected, try to reset
+   if(socket_handle == INVALID_HANDLE || !SocketIsConnected(socket_handle)) {
+      Print("🔄 Connection lost. Retrying...");
+      
+      // Clean up old handle if it exists
+      if(socket_handle != INVALID_HANDLE) SocketClose(socket_handle);
+      
+      // Create new socket and try to connect
+      socket_handle = SocketCreate();
+      if(SocketConnect(socket_handle, InpHost, InpPort, 1000)) {
+         Print("✅ Reconnected to Rust Engine!");
+         return true;
+      }
+      return false;
+   }
+   return true;
+}
+
+void OnTick() {
+   // 1. Ensure we are connected before doing anything
+   if(!CheckConnection()) return;
+
+   MqlTick last_tick;
+   if(SymbolInfoTick(_Symbol, last_tick)) {
+      MultiplexedTick packet;
+      ZeroMemory(packet);
+      
+      StringToCharArray(_Symbol, packet.asset_name, 0, 10);
+      packet.bid      = last_tick.bid;
+      packet.ask      = last_tick.ask;
+      packet.last     = last_tick.last;
+      packet.volume   = (long)last_tick.volume;
+      packet.time_msc = last_tick.time_msc;
+      packet.flags    = last_tick.flags;
+
+      uchar data[];
+      if(StructToCharArray(packet, data)) {
+         // 2. Attempt to send. If it fails, SocketSend returns -1
+         if(SocketSend(socket_handle, data, ArraySize(data)) < 0) {
+            Print("❌ Send failed. Marking socket as closed.");
+            SocketClose(socket_handle);
+            socket_handle = INVALID_HANDLE;
+         }
+      }
+   }
+}

@@ -28,7 +28,7 @@ mod integration_tests {
 
         // 2. Target a specific asset and lookback (e.g., last 180 hours)
         let asset_id = "assets:US30:FundedNext"; 
-        let lookback = Some(180);
+        let lookback = Some(27800);
 
         println!("\nFetching real data for {}...", asset_id);
 

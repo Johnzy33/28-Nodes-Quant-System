@@ -81,12 +81,15 @@ async fn poll_events_task(tx: Sender<TuiEvent>) -> Result<()> {
 }
 
 /// The main application loop, now driven by the MPSC receiver.
-async fn run_app_async<B: ratatui::backend::Backend>(
+async fn run_app_async<B: ratatui::backend::Backend + Send + Sync>(
     terminal: &mut Terminal<B>,
     app: &mut AppState,
     event_sender: Sender<TuiEvent>,
     event_receiver: &mut Receiver<TuiEvent>,
-) -> Result<()> {
+) -> Result<()>
+where
+    B::Error: Send + Sync + 'static,
+{
     loop {
         //  Draw the UI
         terminal.draw(|f| render_ui(f, app))?;

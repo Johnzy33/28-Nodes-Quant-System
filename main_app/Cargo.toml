@@ -12,6 +12,8 @@ log={workspace = true}
 env_logger = {workspace = true}
 rdkafka = { workspace = true}
 dotenvy = {workspace = true}
+bytemuck = {workspace = true}
+surrealdb = {workspace = true}
 
 
 data_engine = { path = "../data_engine" }

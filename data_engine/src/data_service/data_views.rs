@@ -204,7 +204,7 @@ impl DataViewExt for DataService {
             "SELECT * FROM session_base WHERE asset_id = $1", 
             asset_id, 
             hwm, 
-            Duration::hours(180),
+            Duration::hours(48),
             "end_ts" 
         ).await?;
 
@@ -257,7 +257,7 @@ impl DataViewExt for DataService {
         });
 
         // 6. Filter results for persistence
-        let limit = start_time;
+        let limit = start_time + Duration::hours(48); // Add 1 hour to ensure we capture the current session if it's still in progress
         
         Ok((
             classified.into_iter().filter(|s| s.end_ts >= limit).collect(),
@@ -335,7 +335,7 @@ impl DataViewExt for DataService {
             "SELECT * FROM eight_hr_base WHERE asset_id = $1",
             asset_id,
             hwm,
-            Duration::hours(180),
+            Duration::hours(24),
             "end_ts"
         ).await?;
 
@@ -563,7 +563,7 @@ impl DataViewExt for DataService {
 
         // 4. Filter results based on the calculated limit
         let limit = start_time;
-        Ok(daily_views.into_iter().filter(|v| v.trading_date >= limit).collect())
+        Ok(daily_views)//.into_iter().filter(|v| v.trading_date >= limit).collect())
     }
 
     // pub async fn weekly_views(&self, asset_id: &str) -> Result<Vec<dm::ClassifiedWeeklyView>> {

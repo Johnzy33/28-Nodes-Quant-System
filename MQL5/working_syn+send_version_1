@@ -1,0 +1,256 @@
+
+
+//+------------------------------------------------------------------+
+//|                                                    pipe_data.mq5 |
+//|                                          Copyright 2025, 28th-Co |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
+
+
+#property strict
+
+struct MultiplexedTick {
+   char   asset_name[10]; char _dummy[6];      
+   double bid; double ask; double last;           
+   long   volume; long time_msc;       
+   uint   flags; uint _end_pad;       
+}; 
+
+struct SyncBar {
+   char   asset[10]; char _pad[6];
+   double open; double high; double low; double close;
+   long   volume; long time; 
+}; 
+
+struct SessionPacket {
+   char     asset[16];      // Symbol Name
+   uint     open_hour;
+   uint     open_min;
+   uint     close_hour;
+   uint     close_min;
+   uint     is_active;      // 1 = Open today, 0 = Holiday/Closed
+};
+
+struct SubscribedAsset {
+   string symbol;
+   ENUM_TIMEFRAMES timeframe;
+   long last_sync;
+};
+
+SubscribedAsset Subscriptions[];
+int socket_handle = INVALID_HANDLE;
+bool is_syncing = false;
+
+template<typename T>
+void SafeSend(uchar header_type, T &struct_obj) {
+   if(socket_handle == INVALID_HANDLE) return;
+   uchar header[1] = {header_type};
+   uchar payload[64]; ZeroMemory(payload);
+   uchar raw_data[]; StructToCharArray(struct_obj, raw_data);
+   ArrayCopy(payload, raw_data, 0, 0, MathMin(ArraySize(raw_data), 64));
+   SocketSend(socket_handle, header, 1);
+   SocketSend(socket_handle, payload, 64);
+}
+
+int OnInit() {
+   socket_handle = SocketCreate();
+   EventSetTimer(1);
+   return(INIT_SUCCEEDED);
+}
+
+void OnTimer() {
+
+   static int last_day = -1;
+   MqlDateTime now;
+   TimeCurrent(now);
+   
+   // If the day has changed since the last timer tick
+   if(now.day != last_day) {
+      last_day = now.day;
+      for(int i=0; i<ArraySize(Subscriptions); i++) {
+         SendSessionUpdate(Subscriptions[i].symbol);
+      }
+   }
+   
+   if(is_syncing || !EnsureConnection()) return;
+
+   uint readable = SocketIsReadable(socket_handle);
+   if(readable >= 5) {
+      uchar head[5];
+      SocketRead(socket_handle, head, 5, 10);
+      if(head[0] == 255) {
+         uint len = head[1]|head[2]<<8|head[3]<<16|head[4]<<24;
+         uchar data[]; ArrayResize(data, len);
+         SocketRead(socket_handle, data, len, 500);
+         ParseSubscription(CharArrayToString(data));
+         return;
+      }
+   }
+
+   for(int i=0; i<ArraySize(Subscriptions); i++) {
+      MqlTick tick;
+      if(SymbolInfoTick(Subscriptions[i].symbol, tick)) {
+         MultiplexedTick p; ZeroMemory(p);
+         StringToCharArray(Subscriptions[i].symbol, p.asset_name, 0, 10);
+         p.bid = tick.bid; p.ask = tick.ask; p.time_msc = tick.time_msc;
+         SafeSend(0, p);
+      }
+   }
+}
+
+void ParseSubscription(string json) {
+   ArrayFree(Subscriptions);
+   string items[];
+   int total = StringSplit(json, '}', items);
+   for(int i=0; i<total; i++) {
+      string sym = ExtractValue(items[i], "mt5");
+      if(sym == "") continue;
+      int idx = ArraySize(Subscriptions);
+      ArrayResize(Subscriptions, idx+1);
+      Subscriptions[idx].symbol = sym;
+      Subscriptions[idx].timeframe = StringToTF(ExtractValue(items[i], "tf"));
+      
+      SymbolSelect(sym, true);
+      is_syncing = true;
+      SyncSymbol(Subscriptions[idx], (long)ExtractValue(items[i], "hwm"));
+      is_syncing = false;
+   }
+}
+
+void SyncSymbol(SubscribedAsset &asset, long hwm) {
+   MqlRates rates[];
+   int copied = CopyRates(asset.symbol, asset.timeframe, (datetime)hwm, TimeCurrent(), rates);
+   for(int i=0; i<copied; i++) {
+      SyncBar b; ZeroMemory(b);
+      StringToCharArray(asset.symbol, b.asset, 0, 10);
+      b.open=rates[i].open; b.high=rates[i].high; b.low=rates[i].low; b.close=rates[i].close;
+      b.volume=(long)rates[i].tick_volume; b.time=(long)rates[i].time;
+      SafeSend(1, b);
+   }
+}
+
+// Helpers
+string ExtractValue(string text, string key) {
+   int pos = StringFind(text, "\""+key+"\"");
+   if(pos < 0) return "";
+   int start = StringFind(text, ":", pos) + 1;
+   int end = StringFind(text, ",", start);
+   if(end < 0) end = StringFind(text, "]", start);
+   string res = StringSubstr(text, start, end-start);
+   StringReplace(res, "\"", "");
+   return res;
+}
+
+ENUM_TIMEFRAMES StringToTF(string tf) {
+   if(tf == "M1") return PERIOD_M1;
+   if(tf == "M5") return PERIOD_M5;
+   if(tf == "M15") return PERIOD_M15;
+   if(tf == "H1") return PERIOD_H1;
+   return PERIOD_M15;
+}
+
+//bool EnsureConnection() {
+//   if(socket_handle == INVALID_HANDLE || !SocketIsConnected(socket_handle)) {
+//      if(socket_handle != INVALID_HANDLE) SocketClose(socket_handle);
+//      socket_handle = SocketCreate();
+//      return SocketConnect(socket_handle, "127.0.0.1", 9090, 500);
+//   }
+//   return true;
+//}
+
+// Update this in your pipe_data.mq5
+//bool EnsureConnection() {
+//  if(socket_handle == INVALID_HANDLE || !SocketIsConnected(socket_handle)) {
+//      if(socket_handle != INVALID_HANDLE) SocketClose(socket_handle);
+//      socket_handle = SocketCreate();
+      
+//      if(SocketConnect(socket_handle, "127.0.0.1", 9090, 500)) {
+         // --- CALIBRATION STEP ---
+         // Send Header 254 (Calibration) + Current Broker Time
+//         uchar header[1] = {254};
+//         long current_broker_time = TimeCurrent();
+//         uchar payload[8]; 
+         // Manual copy of long to uchar array
+//         for(int i=0; i<8; i++) payload[i] = (uchar)((current_broker_time >> (i*8)) & 0xFF);
+         
+//         SocketSend(socket_handle, header, 1);
+//         SocketSend(socket_handle, payload, 8);
+         
+//         Print("📡 Sent Calibration Time: ", current_broker_time);
+//         return true;
+//      }
+//      return false;
+//   }
+//   return true;
+//}
+
+bool EnsureConnection() {
+   if(socket_handle == INVALID_HANDLE || !SocketIsConnected(socket_handle)) {
+      if(socket_handle != INVALID_HANDLE) SocketClose(socket_handle);
+      socket_handle = SocketCreate();
+      
+      if(SocketConnect(socket_handle, "127.0.0.1", 9090, 500)) {
+         // 1. Send Calibration Time (Header 254)
+         uchar header[1] = {254};
+         long current_broker_time = TimeCurrent();
+         uchar payload[8]; 
+         for(int i=0; i<8; i++) payload[i] = (uchar)((current_broker_time >> (i*8)) & 0xFF);
+         SocketSend(socket_handle, header, 1);
+         SocketSend(socket_handle, payload, 8);
+         
+         // 2. Send Session Info for all existing subscriptions (Header 3)
+         for(int i=0; i<ArraySize(Subscriptions); i++) {
+            SendSessionUpdate(Subscriptions[i].symbol);
+         }
+
+         Print("📡 Reconnected & Calibrated.");
+         return true;
+      }
+      return false;
+   }
+   return true;
+}
+
+// --- The Session Logic ---
+void SendSessionUpdate(string symbol) {
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   ENUM_DAY_OF_WEEK day = (ENUM_DAY_OF_WEEK)dt.day_of_week;
+   
+   datetime start, end;
+   SessionPacket packet;
+   ZeroMemory(packet);
+   StringToCharArray(symbol, packet.asset, 0, 16);
+   
+   // We look for the first session (index 0). 
+   // If your broker has multiple sessions (e.g. break for lunch), 
+   // index 0 usually gives the start and index N gives the final close.
+   if(SymbolInfoSessionQuote(symbol, day, 0, start, end)) {
+      MqlDateTime start_dt, end_dt;
+      TimeToStruct(start, start_dt);
+      
+      // For the close, we check if there's a second session to get the REAL end of day
+      datetime start_tmp, end_final;
+      if(SymbolInfoSessionQuote(symbol, day, 1, start_tmp, end_final)) {
+         TimeToStruct(end_final, end_dt);
+      } else {
+         TimeToStruct(end, end_dt);
+      }
+      
+      packet.open_hour = (uint)start_dt.hour;
+      packet.open_min  = (uint)start_dt.min;
+      packet.close_hour = (uint)end_dt.hour;
+      packet.close_min  = (uint)end_dt.min;
+      packet.is_active = 1;
+   } else {
+      packet.is_active = 0; // Market is closed today (Weekend/Holiday)
+   }
+   
+   // Send Header 3 + Packet
+   uchar header[1] = {3};
+   SocketSend(socket_handle, header, 1);
+   
+   uchar raw_packet[];
+   StructToCharArray(packet, raw_packet);
+   SocketSend(socket_handle, raw_packet, sizeof(SessionPacket));
+}

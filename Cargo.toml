@@ -8,7 +8,9 @@ members = [
   "database_engine", 
   "shared_models", 
   "risk_engine",
+  "mt5_bridge",
 ]
+
 
 [workspace.dependencies]
 tokio = { version = "1.48", features = ["full"] }
@@ -23,8 +25,10 @@ futures-util = "0.3.31"
 rdkafka = { version = "0.29.0", features = ["ssl", "tokio","default"] }
 csv = "1.2"
 deadpool-postgres = { version = "0.14.1", features = [ "serde", "rt_tokio_1"] } # Added rt_tokio_1
+
+surrealdb = { version = "2.6.0", features = ["kv-mem", "kv-surrealkv"] }
 dotenvy = "0.15"
-log = "0.4"
+log = "0.4.29"
 env_logger = "0.11"
 chrono-tz = "0.10.4"
 futures = "0.3"
@@ -32,13 +36,28 @@ clap = { version = "4.4", features = ["derive", "env"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "chrono", "uuid", "json", "migrate"] }
 inquire = "0.6"
 crossterm = "0.27"
-ratatui = "0.29.0"
+ratatui = "0.30.0"
 strum_macros = "0.27.2"
 strum = "0.27.2"
 lazy_static = "1.4"
 zmq = "0.10.0"
-uuid = { version = "1.19.0", features = ["v4", "serde"] }
+uuid = { version = "1.20.0", features = ["v4", "serde"] }
 async-trait = "0.1.68"
 dashmap = "6.1.0"
 clokwerk = "0.4.0"
+bytemuck = {version = "1.25.0", features = ["derive"]}
+smol_str = { version = "0.3.5", features = ["serde"] }
+rustc-hash = "2.1"
+once_cell = "1.19"
+
+iceoryx2 = { version = "0.8.1", features = ["dev_permissions"] }
+
+
+
+[profile.release]
+panic = "abort"
+strip = false
+lto = "fat"
+codegen-units = 1
+
 

@@ -233,7 +233,7 @@ pub async fn run_master_asset_metrics(pool: &PgPool) -> Result<()> {
     
     
     
-    let data_service = data_model::DataService { pool: pool.clone() };
+    let data_service = data_model::DataService::new(pool.clone());// { pool: pool.clone() };
 
     // fetch the list of assets to process
     let asset_ids = data_service.fetch_all_active_asset_ids().await?;
@@ -304,7 +304,8 @@ pub async fn vortex(pool: &PgPool) -> Result<()> {
         let task = tokio::spawn(async move {
             info!("Starting metrics pipeline for asset: {}", asset_id_clone);
            // let result = asset_metrics_pipeline(&pool_clone, &asset_id_clone).await;
-            let result= VortexSnapshot::load_vortex_snapshot( &pool_clone, &asset_id).await;
+           
+            let result= VortexSnapshot::load_vortex_snapshot(  &pool_clone, &asset_id).await;
 
             match &result {
                 Ok(_) => info!("Completed metrics pipeline for asset: {}", asset_id_clone),

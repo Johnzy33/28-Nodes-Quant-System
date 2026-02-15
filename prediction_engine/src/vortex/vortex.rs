@@ -249,23 +249,27 @@ impl VortexSnapshot {
             }
         }
 
-        // println!("--- Vortex Snapshot: {} ---", &snapshot.asset_id);
+        println!("--- Vortex Snapshot: {} ---", &snapshot.asset_id);
             
-        //     // Print the Session Path
-        //     let (s_p2, s_p1) = &snapshot.context.session_path;
-        //     println!(
-        //         "Session Path:  [{}] -> [{}]  => Current: {}", 
-        //         s_p2, s_p1, &snapshot.context.current_cs
-        //     );
+            // Print the Session Path
+            let (s_p2, s_p1) = &snapshot.context.session_path;
+            println!(
+                "Session Path:  [{}] -> [{}]  => Current: {}", 
+                s_p2, s_p1, &snapshot.context.current_cs
+            );
 
-        //     // Print the Bar Path
-        //     let (b_p2, b_p1) = &snapshot.context.bar_path;
-        //     println!(
-        //         "Bar Path:      [{}] -> [{}]  => Current Bar: {}", 
-        //         b_p2, b_p1, &snapshot.context.current_cb
-        //     );
+            // Print the Bar Path
+            let (b_p2, b_p1) = &snapshot.context.bar_path;
+            println!(
+                "Bar Path:      [{}] -> [{}]  => Current Bar: {}", 
+                b_p2, b_p1, &snapshot.context.current_cb
+            );
             
-        // println!("-------------------------------------------");
+        println!("-------------------------------------------");
+        
+
+        
+        
 
         Ok(snapshot)
     }

@@ -1,0 +1,21 @@
+[package]
+name = "mt5_bridge"
+version = "0.1.0"
+edition = "2024"
+
+
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# iceoryx2 with the 'ipc' feature for shared memory
+
+iceoryx2 = { workspace = true, features = ["dev_permissions"] }
+
+[profile.release]
+panic = "abort"
+
+opt-level = 3
+lto = "fat"      # Ensure Link Time Optimization doesn't hide exports
+strip = false    # VERY IMPORTANT: Do not strip symbols during build

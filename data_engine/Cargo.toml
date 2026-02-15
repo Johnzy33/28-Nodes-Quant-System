@@ -26,7 +26,12 @@ futures = {workspace = true}
 lazy_static = {workspace = true}
 async-trait ={ workspace = true}
 clokwerk = {workspace = true}
-
+bytemuck = {workspace = true}
+smol_str = {workspace = true}
+rustc-hash = {workspace = true}
+dashmap = {workspace = true}
+once_cell ={ workspace = true}
+surrealdb = {workspace = true}
 
 
 # Local crate dependencies within the workspace
