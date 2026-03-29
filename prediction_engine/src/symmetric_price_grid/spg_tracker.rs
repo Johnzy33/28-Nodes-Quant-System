@@ -3,7 +3,7 @@
 use crate::price_grid::{PriceLevel, GridLayer, LayerManager};
 use crate::anchored_grid::AnchoredGrid;
 use shared_models::{data_model as dm, get_trading_session};
-use shared_models::market_data::MarketData;
+use shared_models::market_data::MarketData_old;
 use shared_models::session_utils::TradingSession;
 use std::collections::HashMap;
 use data_engine::traits::DataViewExt;
@@ -338,7 +338,7 @@ impl SpgTracker {
 
     pub fn process_live_update(
         &mut self, 
-        data: &MarketData, 
+        data: &MarketData_old, 
         ds: &dm::DataService
     ) {
 

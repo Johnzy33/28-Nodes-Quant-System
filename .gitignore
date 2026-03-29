@@ -28,3 +28,5 @@ target
 *.surql
 *.sql
 /trading_system_db
+/28_node_system
+

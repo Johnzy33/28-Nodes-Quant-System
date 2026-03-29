@@ -1,0 +1,74 @@
+[ 
+    {
+    "symbol": "US2000",
+    "timezone": "America/New_York",
+    "name": "Russell 2000 Futures",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "US100",
+    "timezone": "America/New_York",
+    "name": "Nasdaq 100 Futures",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "UK100",
+    "timezone": "Europe/London",
+    "name": "FTSE 100 Futures",
+    "asset_class": "Index_Future",
+    "currency": "GBP",
+    "exchange": "ICE",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "JP225",
+    "timezone": "Asia/Tokyo",
+    "name": "Nikkei 225 Futures",
+    "asset_class": "Index_Future",
+    "currency": "JPY",
+    "exchange": "OSE",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "SPX500",
+    "timezone": "America/New_York",
+    "name": "S&P 500 Index",
+    "asset_class": "Index_Future",
+    "currency": "USD",
+    "exchange": "CME",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "US30",
+    "timezone":"America/New_York",
+    "name": "Dow Jones",
+    "asset_class":"Index_Future",
+    "currency":"USD",
+    "exchange":"CME",
+    "source":"FundedNext"
+  },
+  {
+    "symbol": "XAUUSD",
+    "timezone": "America/New_York",
+    "name": "Gold vs US Dollar",
+    "asset_class": "Commodity Future",
+    "currency": "USD",
+    "exchange": "COMEX",
+    "source": "FundedNext"
+  },
+  {
+    "symbol": "XAGUSD",
+    "timezone": "America/New_York",
+    "name": "Silver vs US Dollar",
+    "asset_class": "Commodity Future",
+    "currency": "USD",
+    "exchange": "COMEX",
+    "source": "FundedNext"
+  }
+]

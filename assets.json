@@ -1,11 +1,8 @@
-[
- 
-
 {
   "XAUUSD": { "timezone": "America/New_York", "exchange": "COMEX" },
   "XAGUSD": { "timezone": "America/New_York", "exchange": "COMEX" },
   "SPX500": { "timezone": "America/New_York", "exchange": "CME" },
-  "NDX100": { "timezone": "America/New_York", "exchange": "CME" },
+  "NAS100": { "timezone": "America/New_York", "exchange": "CME" },
   "US30":   { "timezone": "America/New_York", "exchange": "CME" },
   "UK100":  { "timezone": "Europe/London",     "exchange": "LSE" },
   "GER40":  { "timezone": "Europe/Berlin",     "exchange": "EUREX" },
@@ -18,5 +15,3 @@
   "BTCUSD": { "timezone": "UTC",               "exchange": "COINBASE" },
   "ETHUSD": { "timezone": "UTC",               "exchange": "COINBASE" }
 }
-
-]

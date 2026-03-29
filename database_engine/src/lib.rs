@@ -1,10 +1,11 @@
+use surrealdb::engine::remote::ws::{Client};
+use surrealdb::Surreal;
+//use anyhow::{Result, Context};
+//use db_connect::connect;
 
-pub mod ingestion;
+// Re-export the query functions for external use
+
+pub type DB = Surreal<Client>;
 pub mod runtime;
-//pub mod producer_config;
-
-//pub use producer_config::*;
-pub use runtime::{setup_database_pool};
-pub use deadpool_postgres::Pool;
 
 

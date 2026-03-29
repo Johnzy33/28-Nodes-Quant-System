@@ -14,7 +14,7 @@ use crate::spg_tracker::SpgTracker;
 use shared_models::data_model as dm;
 use shared_models::traits::MarketDataHandler;
 use data_engine::traits::DataOrchestratorExt;
-use shared_models::market_data::MarketData;
+use shared_models::market_data::MarketData_old;
 
 pub struct SpgOrchestrator {
     data_service: Arc<dm::DataService>,
@@ -25,7 +25,7 @@ pub struct SpgOrchestrator {
 
 #[async_trait]
 impl MarketDataHandler for SpgOrchestrator {
-    async fn on_price_update(&self, data: &MarketData) {
+    async fn on_price_update(&self, data: &MarketData_old) {
         // If we haven't bootstrapped yet, we ignore live ticks to prevent 
         // calculations on incomplete history.
         if !self.is_live.load(Ordering::Relaxed) {

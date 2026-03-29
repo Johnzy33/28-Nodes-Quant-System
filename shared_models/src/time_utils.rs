@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, TimeZone, NaiveDateTime, Utc, Duration, Datelike, NaiveDate, Weekday};
+use chrono::{DateTime, TimeZone, NaiveDateTime, Utc, Duration, Datelike, NaiveDate};
 use chrono_tz::Tz;
-use chrono_tz::America::New_York;
+// use chrono_tz::America::New_York;
 use chrono_tz::Europe::Athens;
 
 // --- CONSTANTS ---
 // Timezone used to anchor incoming non-timezone-aware data (e.g., from external APIs/files).
 const ANCHOR_TIMEZONE: Tz = Athens; 
 // The trading day calculation uses New York Time to align with the AS session start.
-const TRADING_TIMEZONE: Tz = New_York;
+// const TRADING_TIMEZONE: Tz = New_York;
 // The PL/pgSQL shift: ts + INTERVAL '6 hours'.
 const TRADING_DAY_SHIFT_HOURS: i64 = 6;
 
@@ -26,6 +26,7 @@ pub fn ts_to_utc_datetime(ts_ms: i64) -> Result<DateTime<Utc>> {
         Some(ndt) => Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc)),
         None => Err(anyhow!("Invalid timestamp: {}", ts_ms)),
     }
+   
 }
 
 /// Parses "YYYY.MM.DD HH:MM:SS" string and anchors it to the ANCHOR_TIMEZONE 

@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # iceoryx2 with the 'ipc' feature for shared memory
 
-iceoryx2 = { workspace = true, features = ["dev_permissions"] }
+# iceoryx2 = { workspace = true, features = ["dev_permissions"] }
 
 [profile.release]
 panic = "abort"

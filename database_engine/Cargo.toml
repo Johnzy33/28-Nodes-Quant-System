@@ -7,17 +7,20 @@ edition = "2024"
 anyhow = { workspace = true }
 tokio = { workspace = true }
 shared_models = { path = "../shared_models" }
-tokio-util = "0.7.16"
-tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
-serde = { workspace = true }
+# tokio-util = "0.7.16"
+# tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+# serde = { workspace = true }
 serde_json = { workspace = true }
-rdkafka = { workspace = true }
-deadpool-postgres =  {workspace = true}
-chrono = { workspace = true }
+# rdkafka = { workspace = true }
+# deadpool-postgres =  {workspace = true}
+# chrono = { workspace = true }
 dotenvy = { workspace = true }
-chrono-tz = {workspace = true }
+# chrono-tz = {workspace = true }
 log = {workspace = true }
 env_logger = {workspace = true }
 futures = {workspace = true}
-sqlx = {workspace = true}
+# sqlx = {workspace = true}
 surrealdb = {workspace = true}
+surrealdb-types = "3.0.0"
+# tracing = { workspace = true }
+# futures-util = { workspace = true }

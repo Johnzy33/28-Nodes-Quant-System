@@ -10,13 +10,13 @@ chrono = { workspace = true}
 anyhow = {workspace = true}
 log = { workspace = true }
 env_logger = { workspace = true }
-tokio-postgres = { workspace = true }
-sqlx = {workspace = true}
+# tokio-postgres = { workspace = true }
+# sqlx = {workspace = true}
 chrono-tz ="0.10.4"
 strum_macros= {workspace = true}
 strum= {workspace = true}   
 async-trait ={ workspace = true}
-rdkafka = { workspace = true }
+# rdkafka = { workspace = true }
 bytemuck = {workspace = true}
 smol_str = {workspace = true}
 rustc-hash = {workspace = true}
@@ -25,3 +25,4 @@ tokio = { workspace = true }
 lazy_static = {workspace = true}
 dashmap ={ workspace = true}
 surrealdb = {workspace = true}
+surrealdb-types = "3.0.0"
