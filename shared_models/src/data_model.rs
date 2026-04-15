@@ -2,7 +2,7 @@
 use chrono::{ Utc,  Offset, TimeZone}; 
 // use sqlx::{PgPool};
 // use sqlx::{FromRow};
-use surrealdb_types::RecordId;
+use surrealdb_types::{RecordId, Datetime};
 // use crate::market_classification::MarketType;
 use anyhow::{ Ok, Result};
 //  use rdkafka::{
@@ -25,7 +25,11 @@ use tokio::io::{AsyncReadExt};
 use dashmap::DashMap;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
-use crate::db_models::AppDatabases;
+use crate::db_models::{self as db,AppDatabases, SurrealIdExt};
+
+use dashmap::DashSet;
+
+
 
 use chrono_tz::Europe::Athens;
 
@@ -37,6 +41,8 @@ pub static SYMBOL_MAP: OnceCell<IngestionContext> = OnceCell::new();
 pub static LAST_LIVE_TS: Lazy<DashMap<RecordId, i64>> = Lazy::new(DashMap::new);
 
 pub static BROKER_OFFSET: AtomicI64 = AtomicI64::new(0);
+pub static  SYNCED_ASSETS: Lazy<DashSet<RecordId>> = Lazy::new(DashSet::new);
+pub static  BACKFILL_STATE: Lazy<DashMap<RecordId, (db::MarketData, u64, u64, Vec<db::MarketData>, MultiplexedTick)>> = Lazy::new(DashMap::new);
 
 /// Tracks calibration state to detect frozen clocks
 pub struct CalibrationState {
@@ -126,6 +132,7 @@ impl DataService{
                 .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
             
             let arc_config = Arc::new(config_data);
+
             
             // Note: FxHashMap is an alias for HashMap<K, V, FxBuildHasher>
             let mut symbol_map = FxHashMap::default();
@@ -136,7 +143,6 @@ impl DataService{
                     asset.system_symbol.to_uppercase(), 
                     arc_config.data_source_id
                 ));
-
                 symbol_map.insert(
                     SmolStr::from(asset.mt5_symbol.clone()), 
                     full_id
@@ -185,6 +191,56 @@ impl DataService{
         }
 
         Ok(())
+    }
+
+    pub fn prime_ingestion_state(
+            &self, 
+            context: &(Arc<IngestionCoordinatorConfig>, FxHashMap<SmolStr, SmolStr>)) {
+        let config = &context.0;
+        
+        for asset in &config.assets {
+            let record_id = db::make_composite_id("assets", &[&asset.mt5_symbol, &config.data_source_id]);
+
+            // Ensure the global state has a home for this asset
+            BACKFILL_STATE.entry(record_id.clone()).or_insert_with(|| {
+                (
+                    db::MarketData {
+                        asset_id: record_id.clone(),
+                        time: Datetime::from_timestamp(1, 0).unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    0, 0, Vec::with_capacity(50), MultiplexedTick::default()
+                )
+            });
+
+            // Ensure the set knows we are tracking this asset
+            SYNCED_ASSETS.insert(record_id);
+        }
+        info!("Primed {} assets in global state", SYNCED_ASSETS.len());
+    }
+
+    pub  fn ensure_asset_primed(&self, mt5_symbol: &str, data_source_id: &str) -> RecordId {
+        let record_id = db::make_composite_id("assets", &[&mt5_symbol, &data_source_id]);
+        
+        // Check SYNCED_ASSETS first (it's fast)
+        if !SYNCED_ASSETS.contains(&record_id) {
+            // Double-check/Insert into BACKFILL_STATE
+            // BACKFILL_STATE.entry(record_id.clone()).or_insert_with(|| {
+            //     (
+            //         db::MarketData {
+            //             asset_id: record_id.clone(),
+            //             time: Datetime::from_timestamp(1, 0).unwrap_or_default(),
+            //             ..Default::default()
+            //         },
+            //         0, 0, Vec::with_capacity(50), MultiplexedTick::default()
+            //     )
+            // });
+            
+            SYNCED_ASSETS.insert(record_id.clone());
+            info!("Just-in-time priming successful for: {} Primed assets in global state: {}", record_id.to_raw_string(), SYNCED_ASSETS.len());
+        }
+        
+        record_id
     }
 
 
@@ -265,6 +321,22 @@ pub struct MultiplexedTick {
     pub time_msc: i64,
     pub flags: u32, 
     pub _end_pad: u32,
+}
+
+impl Default for MultiplexedTick {
+    fn default() -> Self {
+        Self {
+            asset: [0u8; 10],
+            _dummy: [0u8; 6],
+            bid: 0.0,
+            ask: 0.0,
+            last: 0.0,
+            volume: 0,
+            time_msc: 0,
+            flags: 0,
+            _end_pad: 0,
+        }
+    }
 }
 
 

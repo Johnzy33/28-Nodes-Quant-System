@@ -1,70 +1,25 @@
 use anyhow::{Context};
-// use futures::TryStreamExt;
-// use futures::future::ok;
-
-// use sqlx::PgPool; 
-// use std::{env};
-// use surrealdb::types::{RecordId};
 use std::sync::Arc;
 // use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::opt::auth::Root;
-use surrealdb::{Surreal, Connection, Error};
+use surrealdb::{Surreal, Connection};
 use surrealdb::engine::remote::ws::{Ws, Client};
-use surrealdb_types::{Datetime, SurrealValue};
+
 
 // use surrealdb::engine::remote::ws::Client;
 use shared_models::{db_models::*};
-// use std::error::Error;
-// use log::{ error};
-// use std::fmt::format;
-// use std::fs;
-// use std::path::Path;
-// use tokio::task;
-// use shared_models::models::AssetSeed;
-use log::{info,warn,error};
-// use tracing;
 
-//use crate::schema_setup; 
+use log::{info,warn,error};
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use std::fs;
 
-// pub type Pool = PgPool;
+
 
 
 static METADATA_CACHE: OnceLock<HashMap<String, StaticMetadata>> = OnceLock::new();
-
-/// Initializes the connection pool and applies the database schema.
-// pub async fn setup_database_pool() -> Result<Pool> {
-    
-//     let db_url = env::var("DATABASE_URL")
-//         .context("DATABASE_URL environment variable must be set (e.g., postgresql://user:pass@host:port/db)")?;
-
-//     info!("Initializing Database Pool ...");
-
-//     //BUILD THE SQLX POOL
-//     let pool = PgPoolOptions::new()
-//         .max_connections(16) // Use max_connections for sqlx
-//         .connect(&db_url)
-//         .await
-//         .context("Failed to build PostgreSQL connection pool using sqlx")?;
-
-//     //register_all_assets(&pool).await?;
-
-//     info!("Database Pool Ready....");
-
-//     Ok(pool)
-// }
-
-
-// use tokio::process::Command;
-// use std::net::TcpStream;
-// use std::time::Duration;
-
-
-
 
 
 pub async fn setup_database() -> AppResult<Arc<AppDatabases>> {
@@ -83,7 +38,7 @@ pub async fn setup_database() -> AppResult<Arc<AppDatabases>> {
     let mirror_db: Option<Surreal<Client>> = None; 
 
     // 3. Prepare Credentials (from your saved info: root/root)
-     let credentials = Root {
+    let credentials = Root {
         username: "root".to_string(),
         password: "root".to_string(),
     };
@@ -120,15 +75,6 @@ pub async fn setup_database() -> AppResult<Arc<AppDatabases>> {
     let tick_schema_sql = include_str!("mem_tick_schema.surql");
     let market_data_schema_sql = include_str!("market_data_schema.surql");
     let functions_sql = include_str!("functions.surql");    
-
-    // info!(" Applying schemas to all nodes...");
-    // for db in [&mem_db, &disk_db] {
-    //     db.query(schema_sql).await?;
-    //     // db.query(tick_schema_sql).await?;
-    //     db.query(market_data_schema_sql).await?;
-    //    let _ = sync_timezone_config(db).await; //<--- Can i use it like this in the db setup 
-        
-    // }
 
     info!(" Applying schemas to all nodes...");
     for db in [&mem_db, &disk_db] {

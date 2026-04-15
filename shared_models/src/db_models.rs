@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
+
 use surrealdb::engine::remote::ws::{Client};
 use surrealdb::Surreal;
 use surrealdb_types::{SurrealValue, RecordId,  RecordIdKey,Datetime};
 use std::collections::BTreeMap;
+
 pub struct AppDatabases {
     pub mem: Surreal<Client>,
     pub disk: Surreal<Client>,
@@ -53,6 +54,7 @@ pub struct MonitorUpdates {
     pub last_ask: f64,
     pub volume: f64,
     pub time: Option<Datetime>, 
+    pub flags: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, SurrealValue, Clone)]
@@ -70,6 +72,34 @@ pub struct MarketData {
     // Maps Price String -> (Buy Volume f64, Sell Volume f64)
     pub levels: BTreeMap<String, (f64, f64)>,
 }
+
+
+
+impl Default for MarketData {
+    fn default() -> Self {
+        Self {
+            // Using a dummy ID or empty string depending on your RecordId type
+            asset_id: RecordId {
+                table: "assets".into(),
+                key: RecordIdKey::String("unknown".into()),
+            },
+            // Initializes to Unix Epoch (1970-01-01 00:00:00 UTC)
+            time: Datetime::from_timestamp(1, 0).unwrap_or_default(),
+            // time: Datetime::from_timestamp(Utc::now().timestamp(), 0).unwrap_or_default(), // Usually initializes to Epoch
+            // time: Datetime::from(
+            //     chrono::DateTime::from_timestamp(Utc::now().timestamp() - (Utc::now().timestamp() % 300), 0).unwrap_or_default()),
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            close: 0.0,
+            volume: 0.0,
+            buy_volume: 0.0,    
+            sell_volume: 0.0,
+            levels: BTreeMap::new(),
+        }
+    }
+}
+
 // pub struct MarketData {
 //     pub asset_id: RecordId,
 //     pub time: Datetime,

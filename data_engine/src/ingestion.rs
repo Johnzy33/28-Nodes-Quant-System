@@ -1,95 +1,47 @@
 
-
-
-
-
 use chrono::{Utc};
-// use surrealdb_types::Value;
 
-// use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
-// use rdkafka::config::ClientConfig;
-// use rdkafka::message::{Message, OwnedMessage};
-// use rdkafka::TopicPartitionList;
-// use rdkafka::producer::FutureProducer;
-// use surrealdb_types::datetime;
-// use std::any::Any;
-// use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-// use tokio::sync::watch;
 use anyhow::{ Result};
 use log::{info, error, debug, warn};
-// use sqlx::{QueryBuilder, Postgres};
-
 
 use shared_models::data_model::DataService;
 use shared_models::data_model as dm;
 use shared_models::market_data::{MarketData};
-// use shared_models::traits::MarketDataHandler;
+
 use crate::traits::{DataIngestionExt, DataMaintenanceExt};
 use shared_models::time_utils;
-
 use tokio::net::{TcpStream};
 use tokio_util::sync::CancellationToken;
-// use std::error::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-// use dotenvy;
-// use std::env;
-// use std::sync::atomic::{AtomicI64, Ordering};
-// use tokio::time::{interval};
-use dashmap::DashSet;
 use chrono::{TimeZone};
-
-// use dashmap::DashMap;
-
 use async_trait::async_trait; 
-use shared_models::data_model::{ LAST_LIVE_TS, MARKET_SESSIONS};
-// use once_cell::sync::Lazy;
+use shared_models::data_model::{ LAST_LIVE_TS, MARKET_SESSIONS, BACKFILL_STATE, SYNCED_ASSETS};
 
-
-// use crate::traits::{DataIngestionExt};
-// use futures::StreamExt;
-// use smol_str::SmolStr;
-// use rustc_hash::FxHashMap;
-// use shared_models::data_model::MARKET_SESSIONS;
 use crate::watchdog::{Mt5Watchdog,WatchdogState};
 use database_engine::runtime::{register_assets};
-// use shared_models::db_models::{make_composite_id}; 
 use shared_models::db_models as db;
-// use surrealdb::{Surreal, engine::local::Mem, engine::local::SurrealKv, opt::auth::Root};
+
 use shared_models::data_model::{IngestionContext};
 
-// use surrealdb::Value; 
-// use std::collections::BTreeMap;
 use shared_models::db_models::{AppDatabases, MonitorUpdates, SurrealIdExt};
 use surrealdb::types::{RecordId, Datetime};
 use surrealdb::types::SurrealValue;
-use surrealdb::Connection; // Add this import
+use surrealdb::Connection; 
 use dashmap::DashMap;
 use std::collections::BTreeMap;
-// use surrealdb::sql::RecordId;
-// use surrealdb::Error as SurrealError;
-
-//  use serde_json::json;
+use std::sync::atomic::{AtomicBool};
 
 
-// use surrealdb::types::{Array, Value,};
-
-// static BROKER_OFFSET: AtomicI64 = AtomicI64::new(0);
-
-// static LIVE_AGGREGATOR: Lazy<DashMap<RecordId, MarketData>> = Lazy::new(DashMap::new);
-// static LAST_LIVE_TS: Lazy<DashMap<SmolStr, i64>> = Lazy::new(DashMap::new);
-// static TICK_MONITOR: Lazy<DashMap<SmolStr, TickTracker>> = Lazy::new(DashMap::new);
 
 lazy_static::lazy_static! {
-    static ref SYNCED_ASSETS: DashSet<RecordId> = DashSet::new();
-    // static ref BACKFILL_STATE: DashMap<RecordId, (db::MarketData, u64, u64)> = DashMap::new();
-    // static ref BACKFILL_STATE: DashMap<RecordId, (db::MarketData, u64, u64, Vec<db::MarketData>)> = DashMap::new();
 
-    // Tuple: (BarData, BuyCount, SellCount, DiskBatch, PreviousTick)
-    static ref BACKFILL_STATE: DashMap<RecordId, (db::MarketData, u64, u64, Vec<db::MarketData>, dm::MultiplexedTick)> = DashMap::new();
+    static ref FLUSH_TRACKER: DashMap<RecordId, i64> = DashMap::new();
+    static ref MONITOR_LOCKS: DashMap<RecordId, Arc<AtomicBool>> = DashMap::new();
 
 }
+
 
 
 #[async_trait]
@@ -97,46 +49,22 @@ lazy_static::lazy_static! {
 impl DataIngestionExt for DataService {
     
 
-
     async fn broker_ingestion(
         &self,
         mut socket: TcpStream,
         dbs: Arc<db::AppDatabases>,
         shutdown: CancellationToken,
         state: WatchdogState,
-    )-> db::AppResult<()> {
-        info!("MT5 Connected. Initializing Startup Sync...");
+    ) -> db::AppResult<()> {
+        info!("MT5 Connected. Waiting for Calibration before Handshake...");
 
         let context = self.load_ingestion_context().map_err(|e| e.to_string())?;
+        
+        // Track initialization state
+        let mut is_initialized = false;
+        
 
-        // 1. Startup Handshake
-        self.send_startup_handshake(&dbs, &mut socket, &context.0).await?;
-
-        // 2. Initial Gap Detection (Manual Sync)
-        for entry in LAST_LIVE_TS.iter() {
-            let (asset_id, last_ts) = entry.pair();
-            let now_ms = Utc::now().timestamp_millis();
-            let offset = self.get_broker_offset() * 1000;
-            let broker_now_ms = now_ms + offset;
-
-            let gap = broker_now_ms - *last_ts;
-            if !self.check_session_status(&asset_id) || !Mt5Watchdog::new(state.clone()).is_market_open() {
-                return Ok(());
-            }
-            if gap > 120_000 {
-                let asset_name = asset_id.key.to_raw_string();
-                warn!("Detection: {} was offline for {}s. Requesting Backfill...", asset_name, gap / 1000);
-                let _ = self.request_manual_sync(&mut socket, asset_id, *last_ts).await;
-            }
-        }
-
-        // 3. Timer Setup
-        let get_sleep_duration = || {
-            let now = Utc::now().timestamp();
-            let seconds_until_next_window = 301 - (now % 300);
-            Duration::from_secs(seconds_until_next_window as u64)
-        };
-
+        // Timer Setup (Standard 5m window)
         let get_next_window_instant = || {
             let now = Utc::now().timestamp();
             let next_window_ts = ((now / 300) + 1) * 300 + 1;
@@ -144,87 +72,145 @@ impl DataIngestionExt for DataService {
             tokio::time::Instant::now() + Duration::from_secs(sleep_secs as u64)
         };
 
-        let mut surreal_batch = Vec::with_capacity(100);
-        let mirror_timer = tokio::time::sleep(get_sleep_duration());
+        let mirror_timer = tokio::time::sleep(Duration::from_secs(301 - (Utc::now().timestamp() % 300) as u64));
         tokio::pin!(mirror_timer);
 
         let mut header = [0u8; 1];
 
         // --- MAIN LOOP ---
         loop {
-            // Use a Result to capture if any arm fails
             let loop_status: Result<bool, Box<dyn std::error::Error + Send + Sync>> = tokio::select! {
-                // SHUTDOWN SIGNAL
+                // 1. SHUTDOWN SIGNAL
                 _ = shutdown.cancelled() => {
                     info!("Shutdown signal received. Initiating graceful exit...");
-                    Ok(false) // false means "stop the loop"
+                    Ok(false)
                 }
 
-                // MIRROR TIMER
+                // 2. MIRROR TIMER
                 _ = &mut mirror_timer => {
+                    
                     self.perform_mirror_cycle(&dbs, &state, false).await;
-                    let next_instant = get_next_window_instant();
-                    mirror_timer.as_mut().reset(next_instant);
-                    Ok(true) // true means "keep going"
+                    
+                    mirror_timer.as_mut().reset(get_next_window_instant());
+                    Ok(true)
                 }
 
-                // SOCKET TRAFFIC
+                // 3. SOCKET TRAFFIC
                 read_res = socket.read_exact(&mut header) => {
                     match read_res {
                         Ok(_) => {
                             match header[0] {
-                                0 => self.process_tick_header(&mut socket, &context, &state, &dbs).await?,
-                                // 1 => self.process_bar_header(&mut socket, &context, &mut surreal_batch, &dbs).await?,
-                                1 => self.process_tick_backfill_header(&mut socket, &context, &dbs).await?,
+                                // --- CALIBRATION (THE UNLOCKER) ---
+                                254 => {
+                                    self.calibration_header(&mut socket).await?;
+                                    
+                                    // First time calibration triggers the Handshake
+                                    if !is_initialized {
+                                        let offset = self.get_broker_offset();
+                                        info!("Calibration Success: Broker is GMT+{}. Dispatching Handshake...", offset / 3600);
+                                        
+                                        // Step A: Send Handshake (Now with correct Offset!)
+                                        self.send_startup_handshake(&dbs, &mut socket, &context.0).await?;
+                                        
+                                        self.prime_ingestion_state(&context);
+                                        // Step B: Run Gap Detection
+                                        self.run_startup_gap_detection(&mut socket, &state).await?;
+                                        
+                                        is_initialized = true;
+                                    }
+                                    Ok(true)
+                                }
+
+                                // --- DATA HEADERS ---
+                                0 => self.process_tick_header(&mut socket, &context, &state, &dbs).await.map(|_| true).map_err(|e| e.into()),
+                               
+                                1 => {
+                                    
+                                    self.process_tick_backfill_headerbatch(&mut socket, &context, &dbs).await.map(|_| true).map_err(|e| e.into())
+                                       
+                                },
                                 
-                                3 => self.process_session_header(&mut socket, &context).await?,
-                                4 => self.process_dna_header(&mut socket, dbs.clone()).await?,
-                                5 => self.process_negotiation_header(&mut socket, &context).await?,
-                                254 => self.calibration_header(&mut socket).await?,
+                                2 => {
+                                    // info!("Received sync complete header for asset {}.", &context.0.assets[0].mt5_symbol);
+                                    // tokio::time::sleep(Duration::from_millis(500)).await;
+                                    self.handle_sync_complete(&mut socket, &dbs, &state).await.map(|_| true).map_err(|e| e.into())
+                                    // let mut sym_buf = [0u8; 16];
+                                    // socket.read_exact(&mut sym_buf).await?;
+                                    // info!("Sync Complete Signal received for asset. Buffers already flushed by aggregator.");
+                                    // Ok(true)
+                                },
+
+
+                                // --- SYSTEM HEADERS ---
+                                3 => self.process_session_header(&mut socket, &context).await.map(|_| true).map_err(|e| e.into()),
+                                4 => self.process_dna_header(&mut socket, dbs.clone()).await.map(|_| true).map_err(|e| e.into()),
+                                5 => self.process_negotiation_header(&mut socket, &context).await.map(|_| true).map_err(|e| e.into()),
+                                
                                 _ => {
                                     warn!("Desync: Unknown Header {}", header[0]);
-                                    return Err("Socket Desync".into());
+                                    Err("Socket Desync".into())
                                 }
                             }
-                            Ok(true)
                         }
+
+                        // Inside tokio::select! -> read_res match
                         Err(e) => {
-                            self.handle_socket_error(e);
-                            Err("Socket Disconnected".into()) // Triggers loop exit
+                            let kind = e.kind();
+                            self.handle_socket_error(e); 
+
+                            if kind == std::io::ErrorKind::UnexpectedEof || kind == std::io::ErrorKind::ConnectionAborted {
+                                // Signal the loop to stop WITHOUT triggering an "Emergency Mirror" error
+                                Ok(false) 
+                            } else {
+                                // This is a real error (Broken Pipe, Reset, etc.)
+                                Err("Socket Disconnected".into())
+                            }
                         }
+                   
                     }
                 }
             };
 
-            // --- THE UNIFIED EXIT HANDLER ---
+            // --- EXIT HANDLER ---
             match loop_status {
-                Ok(true) => continue, // No issues, keep looping
-                Ok(false) | Err(_) => {
-                    // If it was a clean exit or an error, we MUST flush the mirror before returning
-                    if loop_status.is_err() {
-                        warn!("Loop exiting due to error. Performing emergency mirror...");
-                    }
-
-                    // Final Flush of any pending batches
-                    if !surreal_batch.is_empty() {
-                        let batch = self.transform_to_standard_market_data(surreal_batch.clone());
-                        if let Err(e) = self.ingest_market_data(&dbs.disk, batch).await {
-                            error!("Final Ingestion Failed: {}", e);
-                        }
-                    }
-
-                    // Final Mirror Cycle
-                    self.flush_backfill_state(&dbs).await?;
+                Ok(true) => continue, // Keep looping
+                Ok(false) => {
+                    // This was a GRACEFUL disconnect (Worker finished)
+                    info!("Connection closed normally. Thread shutting down.");
+                    break; // Exit the loop, function returns Ok at the bottom
+                }
+                Err(e) => {
+                    // This was a CRASH (Broken pipe, etc)
+                    warn!("Loop exiting due to error: {}. Performing emergency mirror...", e);
                     self.perform_mirror_cycle(&dbs, &state, true).await;
-
-                    info!("Cleanup complete. System exiting.");
-                    break; // Break the loop
+                    break; 
                 }
             }
         }
-
         Ok(())
     }
+
+    async fn run_startup_gap_detection(
+        &self, 
+        socket: &mut TcpStream, 
+        state: &WatchdogState
+    ) -> db::AppResult<()> {
+        let offset_ms = self.get_broker_offset() as i64 * 1000;
+        let broker_now_ms = Utc::now().timestamp_millis() + offset_ms;
+
+        for entry in LAST_LIVE_TS.iter() {
+            let (asset_id, last_ts) = entry.pair();
+            let gap = broker_now_ms - *last_ts;
+
+            if gap > 120_000 && self.check_session_status(&asset_id) {
+                warn!("Gap Detected for {}: {}s. Requesting Sync...", asset_id.to_raw_string(), gap / 1000);
+                self.request_manual_sync(socket, asset_id, *last_ts).await?;
+            }
+        }
+        Ok(())
+    }
+
+
 
 
     async fn request_manual_sync(&self, socket: &mut TcpStream, asset_id: &RecordId, start_ts_ms: i64) -> Result<()> {
@@ -269,49 +255,133 @@ impl DataIngestionExt for DataService {
     }
 
 
+
     async fn process_tick_header(
         &self, 
         socket: &mut TcpStream, 
         context: &IngestionContext, 
         state: &WatchdogState,
-        // batch: &mut Vec<MarketData>,
-        dbs: &Arc<AppDatabases> // 1. Pass your DB handles here
-    )  -> db::AppResult<()> {
+        dbs: &Arc<AppDatabases> 
+    ) -> db::AppResult<()> {
         let mut buf = [0u8; 64]; 
         socket.read_exact(&mut buf).await?;
 
         if let Ok(tick) = bytemuck::try_from_bytes::<dm::MultiplexedTick>(&buf) {
-            // let asset_id = self.resolve_asset_id(&tick.asset, context);
-            let source_id = context.0.data_source_id.clone();
-            let symbol = String::from_utf8_lossy(&tick.asset).trim_matches(char::from(0)).to_string();
-            let record_id = self.get_asset_record_id(&tick.asset, &source_id);
+            let record_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
+            let symbol = String::from_utf8_lossy(&tick.asset).split('\0').next().unwrap_or("").trim().to_string();
             let broker_offset = self.get_broker_offset();
-         
+            let tick_window_ms = ((tick.time_msc - (broker_offset * 1000)) / 300_000) * 300_000;
+            
+            
+            if SYNCED_ASSETS.contains(&record_id) {
+                let mut entry = match BACKFILL_STATE.get_mut(&record_id) {
+                    Some(e) => e,
+                    None => return Ok(()), 
+                };
 
-            if !self.check_session_status(&record_id) || !Mt5Watchdog::new(state.clone()).is_market_open() {
-                return Ok(());
+                // let (ref mut bar, _, _, _, ref mut prev_m_tick) = *entry;
+                let (ref mut bar, ref mut buy_count, ref mut sell_count, ref mut batch, ref mut prev_m_tick) = *entry;
+                let bar_ts = bar.time.timestamp_millis();
+
+                // 1. Priming
+                if bar_ts == 1000 {
+                    info!("Priming initial buffer for SYNCED asset {}, Window: {}", symbol, tick_window_ms);
+                    bar.time = Datetime::from_timestamp(tick_window_ms / 1000, 0).unwrap_or_default();
+                    bar.open = tick.bid; bar.high = tick.bid; bar.low = tick.bid; bar.close = tick.bid;
+                    *prev_m_tick = tick.clone();
+                    return Ok(());
+                }
+
+                // 2. THE REFINED GATE: Target-Based Exit
+                let current_live_window = (Utc::now().timestamp_millis() / 300_000) * 300_000;
+                let previous_live_window = current_live_window - 300_000;
+
+                // Condition A: The tick we just received is part of the LIVE window (or future)
+                let tick_is_live = tick_window_ms >= current_live_window;
+
+                // Condition B: The bar we have in RAM is also at the LIVE edge
+                let bar_is_live = bar_ts >= previous_live_window;
+
+                // Condition C: We just saw a window transition (e.g., 01:20 -> 01:25)
+                let is_transition = tick_window_ms > bar_ts;
+
+                // Condition D: Backfill is NOT currently busy with historical bars (This prevents handoff during a large historical flush)
+                let backfill_is_busy = !batch.is_empty(); 
+
+
+
+                // 2. Handoff Guard: Only handoff if tick is NEWER than bar AND bar is already "LIVE"
+                if tick_is_live && bar_is_live && is_transition && !backfill_is_busy  {
+                    drop(entry); // Release lock before removal
+                    if let Some((_, entry_to_flush)) = BACKFILL_STATE.remove(&record_id) {
+                        let mut completed_bar = entry_to_flush.0;
+                        let buy_count = entry_to_flush.1 as f64;
+                        let sell_count = entry_to_flush.2 as f64;
+                        let total_ticks = (buy_count + sell_count) as f64;
+                        let dbs_disk = Arc::clone(dbs);
+                        let service_handle = self.clone();
+                        
+
+                         // SCALE VOLUME: Ensures buy_vol + sell_vol = total volume
+                        if total_ticks > 0.0 {
+                            let scale = completed_bar.volume / total_ticks;
+                            completed_bar.buy_volume = (buy_count * scale).round();
+                            completed_bar.sell_volume = (completed_bar.volume - completed_bar.buy_volume).max(0.0);
+                            
+                            // Also scale the price levels for a consistent footprint
+                            for v in completed_bar.levels.values_mut() {
+                                v.0 = (v.0 * scale).round();
+                                v.1 = (v.1 * scale).round();
+                            }
+                        }
+
+                        tokio::spawn(async move {
+                            let _ = service_handle.ingest_market_data(&dbs_disk.disk, vec![completed_bar]).await;
+                        });
+                    }
+                    SYNCED_ASSETS.remove(&record_id.clone());
+                    info!("Handoff Complete for {}", symbol);
+                } else {
+                    // 3. Live Update: Belongs to the current bar in BACKFILL_STATE
+                    // (This handles the case where backfill and live are currently in the same window)
+                    let price = tick.bid;
+                    bar.high = bar.high.max(price);
+                    bar.low = bar.low.min(price);
+                    bar.close = price;
+                    
+                    // Volume logic...
+                    let is_buy = if tick.ask > prev_m_tick.ask { true } 
+                                else if tick.bid < prev_m_tick.bid { false } 
+                                else { tick.bid >= tick.ask };
+                    let vol_delta = (tick.volume as f64 - prev_m_tick.volume as f64).max(0.0);
+                    
+                    let level = bar.levels.entry(format!("{:.5}", price)).or_insert((0.0, 0.0));
+                    if is_buy { bar.buy_volume += vol_delta; level.0 += 1.0; *buy_count += 1; } 
+                    else { bar.sell_volume += vol_delta; level.1 += 1.0; *sell_count += 1; }
+
+                    bar.volume = tick.volume as f64;
+                    *prev_m_tick = tick.clone();
+                    return Ok(());
+                }
             }
 
-            LAST_LIVE_TS.insert(record_id.clone(), tick.time_msc);
-            // let utc_ts_ms = tick.time_msc - (self.get_broker_offset() * 1000);
-
+            // Standard Monitor Path
             let update = MonitorUpdates {
-                asset_id: record_id,
+                asset_id: record_id.clone(),
                 time_msc: tick.time_msc,
-                last_bid: tick.bid,
-                last_ask: tick.ask,
+                last_bid: tick.bid, last_ask: tick.ask,
                 volume: tick.volume as f64,
-                time:None,
+                time: None, flags: Some(tick.flags),
             };
             state.update();
-
-            if let Err(e) = self.ingest_tick(dbs.clone(), update, &symbol, &source_id,broker_offset).await {
-                error!("SurrealDB Ingest Error: {}", e);
-            }
+            LAST_LIVE_TS.insert(record_id, tick.time_msc);
+            let _ = self.ingest_tick(dbs.clone(), update, &symbol, &context.0.data_source_id, "monitor", broker_offset).await;
         }
         Ok(())
     }
 
+    
+    
     async fn process_dna_header(
         &self, 
         socket: &mut TcpStream, 
@@ -329,592 +399,222 @@ impl DataIngestionExt for DataService {
     }
 
 
-
-    async fn process_bar_header(
+    async fn process_tick_backfill_headerbatch(
         &self,
         socket: &mut TcpStream,
         context: &IngestionContext,
-        surreal_batch: &mut Vec<MarketData>, 
         dbs: &Arc<AppDatabases>,
     ) -> db::AppResult<()> {
-        let mut buf = [0u8; 64];
-        socket.read_exact(&mut buf).await?;
+        // 1. Read the 4-byte count (How many ticks are coming?)
+        let mut count_buf = [0u8; 4];
+        socket.read_exact(&mut count_buf).await?;
+        let count = u32::from_le_bytes(count_buf) as usize;
 
-        if let Ok(bar) = bytemuck::try_from_bytes::<dm::SyncBar>(&buf) {
-            let asset_id = self.get_asset_record_id(&bar.asset, &context.0.data_source_id);
+        if count == 0 { 
+            info!("Backfill batch count is 0, no ticks to process");
+            return Ok(()); 
+        }
+
+        // 2. Calculate total bytes (count * 64)
+        let total_bytes = count * 64;
+        let mut data_buf = vec![0u8; total_bytes];
+
+        
+        // 3. FORCE read the entire batch. This is the "Desync Killer"
+        socket.read_exact(&mut data_buf).await?;
+
+        // 4. Zero-copy cast and process
+        let ticks: &[dm::MultiplexedTick] = bytemuck::cast_slice(&data_buf);
+        let asset_id = self.get_asset_record_id(&ticks[0].asset, &context.0.data_source_id);
+
+        // let symbol = String::from_utf8_lossy(&ticks[0].asset).trim_matches(char::from(0)).to_string();
+        // Use this logic everywhere you convert tick.asset to a String
+        let symbol = String::from_utf8_lossy(&ticks[0].asset)
+            .split('\0')             // Stop at the first null byte
+            .next()                  // Take the first part
+            .unwrap_or("")
+            .trim()                  // Remove any whitespace
+            .to_string();
+
+        info!("Expecting backfill batch of {} ticks ({} bytes, for asset {})", count, total_bytes, symbol);
+ 
+        // PROCESS IN CHUNKS to prevent blocking the async runtime
+        for (i, tick) in ticks.iter().enumerate() {
+
+            let finished_history: bool = self.handle_backfill_aggregation(tick, context, dbs).await?;
+
+            if finished_history {
+                // BACKFILL COMPLETE: Flush any remaining bars in the batch
+                info!("Backfill complete for {}. Performing final cleanup.", symbol);
+                self.flush_backfill_asset(&asset_id, dbs).await;
+
+                return Ok(()); 
+            }
             
-            let bar_time_ms = if bar.time < 10_000_000_000 { bar.time * 1000 } else { bar.time };
-            let offset_ms = self.get_broker_offset() * 1000;
-            let utc_ts_ms = bar_time_ms - offset_ms;
+            // Every 1000 ticks, yield to allow the heartbeat/other tasks to run
+            if i % 1000 == 0 {
+                tokio::task::yield_now().await;
+            }
+        }
 
-            let surreal_data = MarketData {
+        Ok(())
+    }
+
+
+    async fn handle_backfill_aggregation(
+        &self,
+        tick: &dm::MultiplexedTick,
+        context: &IngestionContext,
+        dbs: &Arc<AppDatabases>,
+    ) -> db::AppResult<bool> { // Returns true if we reached the live edge
+        let asset_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
+        let symbol = String::from_utf8_lossy(&tick.asset)
+            .split('\0').next().unwrap_or("").trim().to_string();
+        let is_special = matches!(symbol.as_str(), "US2000" | "XAUUSD" | "XAGUSD" | "JP225" | "SILVER" | "GOLD");
+
+        let price = if tick.last > 0.0 { tick.last } else { tick.bid };
+        let broker_offset_ms = self.get_broker_offset() * 1000;
+        let bar_start_ts = ((tick.time_msc - broker_offset_ms) / 300_000) * 300_000;
+        let current_live_window = (Utc::now().timestamp_millis() / 300_000) * 300_000;
+
+        // --- LIVE EDGE SIGNAL ---
+        // If this tick belongs to the current live window, we signal completion of backfill
+        let is_live_tick = bar_start_ts >= current_live_window;
+
+        let entry_opt = BACKFILL_STATE.get_mut(&asset_id);
+
+        if entry_opt.is_none() {
+            let new_bar = db::MarketData {
+                time: Datetime::from_timestamp(bar_start_ts / 1000, 0).unwrap_or_default(),
+                open: price, high: price, low: price, close: price,
+                volume: tick.volume as f64,
                 asset_id: asset_id.clone(),
-                ts: utc_ts_ms,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume as f64,
+                ..Default::default()
             };
+            BACKFILL_STATE.insert(asset_id.clone(), (new_bar, 0u64, 0u64, Vec::new(), tick.clone()));
+            return Ok(is_live_tick);
+        }
 
-            // --- 1. Real-time Routing (Memory DB) ---
-            // If the candle is from the last 5 minutes, it belongs in RAM for the dashboard/aggregator
-            let now_utc = Utc::now().timestamp_millis();
-            if (now_utc - utc_ts_ms).abs() < (5 * 60 * 1000) {
-                let dbs_clone = Arc::clone(dbs);
-                let s_data = vec![surreal_data.clone()]; // Put in a vec for the ingester  
-                let service_handle = self.clone(); 
-                tokio::spawn(async move {
-                    // Transform and Ingest to MEM
-                    let mem_batch = service_handle.transform_to_standard_market_data(s_data);
-                    if let Err(e) = service_handle.ingest_market_data(&dbs_clone.mem, mem_batch).await {
-                        error!("Mem Ingestion Failed: {}", e);
+        let mut entry = entry_opt.unwrap();
+        let (ref mut bar, ref mut buy_count, ref mut sell_count, ref mut batch, ref mut prev_tick) = *entry;
+
+        // --- WINDOW PIVOT LOGIC ---
+        if bar_start_ts != bar.time.timestamp_millis() {
+            let is_dummy = bar.time.timestamp_millis() == 1000;
+
+            if !is_dummy && (*buy_count + *sell_count) > 0 {
+                let mut finished_bar = bar.clone();
+                let total_ticks = (*buy_count + *sell_count) as f64;
+
+                if total_ticks > 0.0 {
+                    if is_special {
+                        let scale = finished_bar.volume / total_ticks;
+                        finished_bar.buy_volume = (*buy_count as f64 * scale).round();
+                        finished_bar.sell_volume = (finished_bar.volume - finished_bar.buy_volume).max(0.0);
+                    } else {
+                        finished_bar.buy_volume = *buy_count as f64;
+                        finished_bar.sell_volume = (finished_bar.volume - finished_bar.buy_volume).max(0.0);
                     }
+                }
+
+                // Only archive if it's a historical window.
+                if finished_bar.time.timestamp_millis() < current_live_window {
+                    batch.push(finished_bar);
+                }
+            }
+
+            // Standard batch flush logic
+            if batch.len() >= 20 {
+                let to_send = std::mem::replace(batch, Vec::with_capacity(20));
+                let dbs_disk = Arc::clone(&dbs);
+                let service_handle = self.clone();
+                tokio::spawn(async move {
+                    let _ = service_handle.ingest_market_data(&dbs_disk.disk, to_send).await;
                 });
             }
 
-            // --- 2. Batch Management (Disk DB) ---
-            surreal_batch.push(surreal_data);
-
-           if surreal_batch.len() >= 100 {
-                // DRAIN the batch so the main thread can keep pushing new data to surreal_batch immediately
-                let batch_to_process = surreal_batch.drain(..).collect::<Vec<_>>();
-                let disk_service = self.clone();
-                let disk_dbs = Arc::clone(dbs);
-
-                // SPAWN Disk Ingestion: This prevents "Broken Pipe" by not blocking the TCP read
-                tokio::spawn(async move {
-                    let standard_batch = disk_service.transform_to_standard_market_data(batch_to_process);
-                    if let Err(e) = disk_service.ingest_market_data(&disk_dbs.disk, standard_batch).await {
-                        error!("Disk Batch Ingestion Failed: {}", e);
-                    }
-                });
-            }  
-            
+            // RESET bar to the new window
+            bar.time = Datetime::from_timestamp(bar_start_ts / 1000, 0).unwrap_or_default();
+            bar.open = price; bar.high = price; bar.low = price; bar.close = price;
+            bar.volume = tick.volume as f64;
+            bar.levels.clear();
+            *buy_count = 0; *sell_count = 0;
         }
-        Ok(())
+
+        // --- AGGREGATION ---
+        bar.high = bar.high.max(price);
+        bar.low = bar.low.min(price);
+        bar.close = price;
+        bar.volume = tick.volume as f64;
+
+        let bid_diff = tick.bid - prev_tick.bid;
+        let ask_diff = tick.ask - prev_tick.ask;
+        let is_buy = if ask_diff > 0.0 { true } else if bid_diff < 0.0 { false } else { tick.bid >= tick.ask };
+
+        let level = bar.levels.entry(format!("{:.5}", price)).or_insert((0.0, 0.0));
+        if is_buy { level.0 += 1.0; *buy_count += 1; } 
+        else { level.1 += 1.0; *sell_count += 1; }
+
+        *prev_tick = tick.clone();
+
+        // If we are in the live window now, return true so the caller can finalize the backfill
+        Ok(is_live_tick)
     }
 
-    // async fn process_tick_backfill_header(
-    //     &self,
-    //     socket: &mut TcpStream,
-    //     context: &IngestionContext,
-    //     dbs: &Arc<AppDatabases>,
-    // ) -> db::AppResult<()> {
-    //     let mut buf = [0u8; 64];
-    //     socket.read_exact(&mut buf).await?;
+   
 
-    //     if let Ok(tick) = bytemuck::try_from_bytes::<dm::MultiplexedTick>(&buf) {
-    //         let asset_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
-            
-    //         // 1. Price Selection (Forex fallback to Bid)
-    //         let price = if tick.last > 0.0 { tick.last } else { tick.bid };
-    //         let price_key = format!("{:.5}", price);
-
-    //         // 2. Normalize Time to UTC using Broker Offset
-    //         let broker_offset_ms = self.get_broker_offset() * 1000;
-    //         let utc_time_msc = tick.time_msc - broker_offset_ms;
-    //         let bucket_ms = 300_000; // 5 Minute Window
-    //         let bar_start_ts = (utc_time_msc / bucket_ms) * bucket_ms;
-
-    //         // 3. Retrieve or Init Aggregation State
-    //         let mut entry = BACKFILL_STATE.entry(asset_id.clone()).or_insert_with(|| {
-    //             let dt = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-    //             (
-    //                 db::MarketData {
-    //                     asset_id: asset_id.clone(),
-    //                     time: dt,
-    //                     open: price, high: price, low: price, close: price,
-    //                     volume: tick.volume as f64,
-    //                     buy_volume: 0.0, sell_volume: 0.0,
-    //                     levels: BTreeMap::new(),
-    //                 },
-    //                 0, 0 // Initial Tick Counts
-    //             )
-    //         });
-
-    //         let (ref mut bar, ref mut total_buy_count, ref mut total_sell_count) = *entry;
-    //         let current_bar_ts = bar.time.timestamp_millis();
-
-    //         // 4. Check for Window Change (Finalize the finished bar)
-    //         if bar_start_ts > current_bar_ts {
-    //             let mut finished_bar = bar.clone();
-    //             let total_ticks = (*total_buy_count + *total_sell_count) as f64;
-                
-    //             if total_ticks > 0.0 {
-    //                 // Determine how much "Official Volume" each tick represents
-    //                 let scale_factor = finished_bar.volume / total_ticks;
-                    
-    //                 // Finalize Global Buy/Sell Volumes
-    //                 finished_bar.buy_volume = *total_buy_count as f64 * scale_factor;
-    //                 finished_bar.sell_volume = *total_sell_count as f64 * scale_factor;
-
-    //                 // Scale every Price Level from Counts to Actual Volume
-    //                 for (_price, volumes) in finished_bar.levels.iter_mut() {
-    //                     // volumes.0 = buy_count, volumes.1 = sell_count (currently)
-    //                     volumes.0 *= scale_factor; // Now buy_volume
-    //                     volumes.1 *= scale_factor; // Now sell_volume
-    //                 }
-    //             }
-
-    //             // Ingest finished bar to Disk
-    //             let dbs_disk = Arc::clone(&dbs);
-    //             let service_handle = self.clone();
-    //             tokio::spawn(async move {
-    //                 let _ = service_handle.ingest_market_data(&dbs_disk.disk, vec![finished_bar]).await;
-    //             });
-
-    //             // 5. Reset Workspace for the New Window
-    //             bar.time = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-    //             bar.open = price; bar.high = price; bar.low = price; bar.close = price;
-    //             bar.volume = tick.volume as f64;
-    //             bar.levels.clear();
-    //             *total_buy_count = 0;
-    //             *total_sell_count = 0;
-
-    //         } else {
-    //             // 6. Update Ongoing Bar
-    //             bar.high = bar.high.max(price);
-    //             bar.low = bar.low.min(price);
-    //             bar.close = price;
-    //             bar.volume = tick.volume as f64; // Keep updated to latest official total
-
-    //             // Temporarily store tick counts in the levels map
-    //             let level = bar.levels.entry(price_key).or_insert((0.0, 0.0));
-    //             if tick.flags & 32 != 0 { 
-    //                 level.0 += 1.0; 
-    //                 *total_buy_count += 1; 
-    //             } else if tick.flags & 64 != 0 { 
-    //                 level.1 += 1.0; 
-    //                 *total_sell_count += 1; 
-    //             }
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-
-
-    // async fn process_tick_backfill_header(
-    //     &self,
-    //     socket: &mut TcpStream,
-    //     context: &IngestionContext,
-    //     dbs: &Arc<AppDatabases>,
-    // ) -> db::AppResult<()> {
-    //     let mut buf = [0u8; 64];
-    //     socket.read_exact(&mut buf).await?;
-
-    //     if let Ok(tick) = bytemuck::try_from_bytes::<dm::MultiplexedTick>(&buf) {
-    //         let asset_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
-    //         let price = if tick.last > 0.0 { tick.last } else { tick.bid };
-    //         let price_key = format!("{:.5}", price);
-
-    //         let broker_offset_ms = self.get_broker_offset() * 1000;
-    //         let utc_time_msc = tick.time_msc - broker_offset_ms;
-    //         let bucket_ms = 300_000; 
-    //         let bar_start_ts = (utc_time_msc / bucket_ms) * bucket_ms;
-
-    //         let mut entry = BACKFILL_STATE.entry(asset_id.clone()).or_insert_with(|| {
-    //             let dt = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-    //             (
-    //                 db::MarketData {
-    //                     asset_id: asset_id.clone(),
-    //                     time: dt,
-    //                     open: price, high: price, low: price, close: price,
-    //                     volume: tick.volume as f64,
-    //                     buy_volume: 0.0, sell_volume: 0.0,
-    //                     levels: BTreeMap::new(),
-    //                 },
-    //                 0, 0,
-    //                 Vec::with_capacity(10)
-    //             )
-    //         });
-
-    //         let (ref mut bar, ref mut total_buy_count, ref mut total_sell_count, ref mut batch) = *entry;
-    //         let current_bar_ts = bar.time.timestamp_millis();
-
-    //         // --- WINDOW CHANGE: BAR IS FINISHED ---
-    //         if bar_start_ts > current_bar_ts {
-    //             info!("Bar Closed: pushing to batch");
-    //             let mut finished_bar = bar.clone();
-                
-    //             // 1. Calculate final volumes/deltas
-    //             let total_ticks = (*total_buy_count + *total_sell_count) as f64;
-    //             if total_ticks > 0.0 {
-    //                 let scale_factor = finished_bar.volume / total_ticks;
-    //                 finished_bar.buy_volume = *total_buy_count as f64 * scale_factor;
-    //                 finished_bar.sell_volume = *total_sell_count as f64 * scale_factor;
-    //                 for v in finished_bar.levels.values_mut() { v.0 *= scale_factor; v.1 *= scale_factor; }
-    //             }
-
-    //             // 2. Routing Logic (Like the old way)
-    //             let now_utc = Utc::now().timestamp_millis();
-    //             let is_recent = (now_utc - current_bar_ts).abs() < (5 * 60 * 1000); // Within 5 mins
-
-
-    //             if is_recent {
-    //                 let dbs_mem = Arc::clone(dbs);
-    //                 let monitor_data = finished_bar.clone();
-                    
-    //                 // Cleanly extract the symbol string from the tick bytes
-    //                 let symbol = String::from_utf8_lossy(&tick.asset)
-    //                     .trim_matches(char::from(0))
-    //                     .to_string();
-                        
-    //                 let monitor_id = db::make_composite_id("monitor", &[&symbol, &context.0.data_source_id]);
-                    
-    //                 // Capture the current tick's ask to represent the 'current' market state
-    //                 let current_ask = tick.ask;
-
-    //                 tokio::spawn(async move {
-    //                     // We include asset_id, last_bid, last_ask, and volume to prime the monitor perfectly
-    //                     let _ = dbs_mem.mem.query("
-    //                         UPSERT $id SET 
-    //                             asset_id = $asset, 
-    //                             last_bid = $bid, 
-    //                             last_ask = $ask, 
-    //                             volume = $vol, 
-    //                             time = $time
-    //                     ")
-    //                     .bind(("id", monitor_id))
-    //                     .bind(("asset", monitor_data.asset_id))
-    //                     .bind(("bid", monitor_data.close)) // The bar close is the last bid
-    //                     .bind(("ask", current_ask))        // The ask from the current tick
-    //                     .bind(("vol", monitor_data.volume))
-    //                     .bind(("time", monitor_data.time))
-    //                     .await;
-    //                 });
-    //             }
-
-    //             // 3. Disk Batch Management
-    //             batch.push(finished_bar);
-    //             if batch.len() >= 10 {
-    //                 let to_send = std::mem::replace(batch, Vec::with_capacity(10));
-    //                 let dbs_disk = Arc::clone(&dbs);
-    //                 let service_handle = self.clone();
-    //                 tokio::spawn(async move {
-    //                     let _ = service_handle.ingest_market_data(&dbs_disk.disk, to_send).await;
-    //                 });
-    //             }
-
-    //             // Reset for New Window
-    //             bar.time = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-    //             bar.open = price; bar.high = price; bar.low = price; bar.close = price;
-    //             bar.volume = tick.volume as f64;
-    //             bar.levels.clear();
-    //             *total_buy_count = 0; *total_sell_count = 0;
-
-    //         } else {
-    //             // --- UPDATE ONGOING BAR ---
-    //             bar.high = bar.high.max(price);
-    //             bar.low = bar.low.min(price);
-    //             bar.close = price;
-    //             bar.volume = tick.volume as f64;
-
-    //             // // Manual Count Logic
-    //             // let is_buy = if tick.last > 0.0 { tick.last >= tick.ask } else { true };
-    //             // let level = bar.levels.entry(price_key).or_insert((0.0, 0.0));
-    //             // if is_buy { level.0 += 1.0; *total_buy_count += 1; } 
-    //             // else { level.1 += 1.0; *total_sell_count += 1; }
-
-              
-
-    //             // 1. Determine the "Active Price" for side calculation
-    //             // let active_price = if tick.last > 0.0 { tick.last } else { tick.bid };
-
-    //             // // 2. Deterministic Side Logic
-    //             // // If price is >= Ask, it's a Buy. 
-    //             // // If price is <= Bid, it's a Sell.
-    //             // // If it's in between, we check which one it's closer to.
-    //             // let is_buy = if active_price >= tick.ask {
-    //             //     true
-    //             // } else if active_price <= tick.bid {
-    //             //     false
-    //             // } else {
-    //             //     // Price is inside the spread (rare in backfill, but possible)
-    //             //     // Compare distance to Bid vs distance to Ask
-    //             //     (active_price - tick.bid) > (tick.ask - active_price)
-    //             // };
-
-    //             // // 3. Update the Level and Global Counts
-    //             // let level = bar.levels.entry(price_key).or_insert((0.0, 0.0));
-    //             // if is_buy { 
-    //             //     level.0 += 1.0; 
-    //             //     *total_buy_count += 1; 
-    //             // } else { 
-    //             //     level.1 += 1.0; 
-    //             //     *total_sell_count += 1; 
-    //             // }
-
-    //             // 1. Get the previous price from the bar's current 'close' (which was the last tick's price)
-    //             let prev_price = bar.close; 
-
-    //             // 2. Logic: If price went up, it's a buy. If down, it's a sell.
-    //             let is_buy = if price > prev_price {
-    //                 true
-    //             } else if price < prev_price {
-    //                 false
-    //             } else {
-    //                 // If price didn't change (Flat Tick), fall back to Quote Comparison
-    //                 // This prevents the "All Zero" problem
-    //                 price >= tick.ask 
-    //             };
-
-    //             // 3. Update the counts
-    //             let level = bar.levels.entry(price_key).or_insert((0.0, 0.0));
-    //             if is_buy { 
-    //                 level.0 += 1.0; 
-    //                 *total_buy_count += 1; 
-    //             } else { 
-    //                 level.1 += 1.0; 
-    //                 *total_sell_count += 1; 
-    //             }
-
-    //             // 4. Update close for the NEXT tick's comparison
-    //             bar.close = price;
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    async fn process_tick_backfill_header(
+    async fn handle_sync_complete(
         &self,
         socket: &mut TcpStream,
-        context: &IngestionContext,
-        dbs: &Arc<AppDatabases>,
+        dbs: &Arc<db::AppDatabases>,
+        _state: &WatchdogState,
     ) -> db::AppResult<()> {
-        let mut buf = [0u8; 64];
-        socket.read_exact(&mut buf).await?;
+        let mut sym_buf = [0u8; 16];
+        socket.read_exact(&mut sym_buf).await?;
+        
+        let symbol = String::from_utf8_lossy(&sym_buf)
+            .split('\0').next().unwrap_or("").trim().to_string();
+        
+        let context = self.load_ingestion_context().map_err(|e| e.to_string())?;
+        let asset_id = self.get_asset_record_id(symbol.as_bytes(), &context.0.data_source_id);
 
-        if let Ok(tick) = bytemuck::try_from_bytes::<dm::MultiplexedTick>(&buf) {
-            let asset_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
-            let price = if tick.last > 0.0 { tick.last } else { tick.bid };
-            let price_key = format!("{:.5}", price);
+        info!("Service: Sync Complete for {}. Finalizing Ingestion...", symbol);
 
-            let broker_offset_ms = self.get_broker_offset() * 1000;
-            let utc_time_msc = tick.time_msc - broker_offset_ms;
-            let bucket_ms = 300_000; // 5m
-            let bar_start_ts = (utc_time_msc / bucket_ms) * bucket_ms;
+        // CRITICAL: We do NOT spawn here. We await.
+        // This ensures the aggregation from the previous header is 100% done
+        // because this code only runs AFTER process_tick_backfill_headerbatch finished.
+        // self.flush_backfill_asset(&asset_id, dbs).await;
 
-            let mut entry = BACKFILL_STATE.entry(asset_id.clone()).or_insert_with(|| {
-                let dt = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-                (
-                    db::MarketData {
-                        asset_id: asset_id.clone(),
-                        time: dt,
-                        open: price, high: price, low: price, close: price,
-                        volume: tick.volume as f64,
-                        buy_volume: 0.0, sell_volume: 0.0,
-                        levels: BTreeMap::new(),
-                    },
-                    0, 0,
-                    Vec::with_capacity(10),
-                    tick.clone() // Initialize prev_tick with the first tick
-                )
-            });
+        Ok(())
+    }
 
-            let (ref mut bar, ref mut total_buy_count, ref mut total_sell_count, ref mut batch, ref mut prev_tick) = *entry;
-            let current_bar_ts = bar.time.timestamp_millis();
 
-            // --- WINDOW CHANGE: FINALIZE PREVIOUS BAR ---
-            if bar_start_ts > current_bar_ts {
-                let mut finished_bar = bar.clone();
-                
-                let total_ticks = (*total_buy_count + *total_sell_count) as f64;
-                if total_ticks > 0.0 {
-                    let scale_factor = finished_bar.volume / total_ticks;
-                    finished_bar.buy_volume = *total_buy_count as f64 * scale_factor;
-                    finished_bar.sell_volume = *total_sell_count as f64 * scale_factor;
-                    for v in finished_bar.levels.values_mut() { 
-                        v.0 *= scale_factor; 
-                        v.1 *= scale_factor; 
-                    }
-                }
+    async fn flush_backfill_asset(&self, asset_id: &RecordId, dbs: &Arc<AppDatabases>) {
+        let mut batch_to_save = Vec::new();
+        let aid_log = asset_id.to_raw_string();
 
-                // SEED MEMORY (Check if this bar is within the last 10 mins)
-                let now_utc = Utc::now().timestamp_millis();
-                if (now_utc - current_bar_ts).abs() < (5 * 60 * 1000) {
-                    let dbs_mem = Arc::clone(dbs);
-                    let monitor_data = finished_bar.clone();
-                    let symbol = String::from_utf8_lossy(&tick.asset).trim_matches(char::from(0)).to_string();
-                    let monitor_id = db::make_composite_id("monitor", &[&symbol, &context.0.data_source_id]);
-                    let current_ask = tick.ask;
+        if let Some(mut entry) = BACKFILL_STATE.get_mut(asset_id) {
+            let (ref mut bar, _, _, ref mut batch, _) = *entry;
+            
+            // If batch is empty, it means all ticks stayed in the 'active bar'
+            if batch.is_empty() && bar.volume > 0.0 {
+                info!("Handoff: No historical bars found for {}, data is live in RAM (Vol: {})", aid_log, bar.volume);
+            }
 
-                    tokio::spawn(async move {
-                        let _ = dbs_mem.mem.query("UPSERT $id SET 
-                            asset_id = $asset, last_bid = $bid, last_ask = $ask, volume = $vol, time = $time")
-                            .bind(("id", monitor_id))
-                            .bind(("asset", monitor_data.asset_id))
-                            .bind(("bid", monitor_data.close))
-                            .bind(("ask", current_ask))
-                            .bind(("vol", monitor_data.volume))
-                            .bind(("time", monitor_data.time))
-                            .await;
-                    });
-                }
+            if !batch.is_empty() {
+                batch_to_save = std::mem::take(batch);
+            }
+        }
 
-                // PUSH TO DISK BATCH
-                batch.push(finished_bar);
-                if batch.len() >= 10 {
-                    let to_send = std::mem::replace(batch, Vec::with_capacity(10));
-                    let dbs_disk = Arc::clone(&dbs);
-                    let service_handle = self.clone();
-                    tokio::spawn(async move {
-                        let _ = service_handle.ingest_market_data(&dbs_disk.disk, to_send).await;
-                    });
-                }
-
-                // RESET FOR NEW WINDOW
-                bar.time = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-                bar.open = price; bar.high = price; bar.low = price; bar.close = price;
-                bar.volume = tick.volume as f64;
-                bar.levels.clear();
-                *total_buy_count = 0; *total_sell_count = 0;
-
+        if !batch_to_save.is_empty() {
+            let count = batch_to_save.len();
+            if let Err(e) = self.ingest_market_data(&dbs.disk, batch_to_save).await {
+                error!("Error flushing {} bars for {}: {}", count, aid_log, e);
             } else {
-                // --- UPDATE ONGOING BAR ---
-                bar.high = bar.high.max(price);
-                bar.low = bar.low.min(price);
-                
-                // SIDE LOGIC: Mirroring SurrealDB (Quote Movement)
-                let bid_diff = tick.bid - prev_tick.bid;
-                let ask_diff = tick.ask - prev_tick.ask;
-
-                let is_buy = if ask_diff > 0.0 {
-                    true  // Ask moving up = Buying pressure
-                } else if bid_diff < 0.0 {
-                    false // Bid moving down = Selling pressure
-                } else {
-                    // Fallback: If quotes are static, check price relative to spread
-                    price >= tick.ask 
-                };
-
-                let level = bar.levels.entry(price_key).or_insert((0.0, 0.0));
-                if is_buy { 
-                    level.0 += 1.0; 
-                    *total_buy_count += 1; 
-                } else { 
-                    level.1 += 1.0; 
-                    *total_sell_count += 1; 
-                }
-
-                // Update state for next tick
-                bar.close = price;
-                bar.volume = tick.volume as f64;
-                *prev_tick = tick.clone(); 
+                info!("Successfully flushed {} historical bars for {}", count, aid_log);
             }
         }
-        Ok(())
     }
-    async fn flush_backfill_state(&self, dbs: &Arc<AppDatabases>) -> db::AppResult<()> {
-        let mut bars_to_flush = Vec::new();
-
-        // Take everything currently in the accumulator
-        for mut entry in BACKFILL_STATE.iter_mut() {
-            let (bar, buy_cnt, sell_cnt, batch,prev_tic,) = entry.value_mut();
-            let mut final_bar = bar.clone();
-            
-            let total_ticks = (*buy_cnt + *sell_cnt) as f64;
-            if total_ticks > 0.0 {
-                let scale_factor = final_bar.volume / total_ticks;
-                final_bar.buy_volume = *buy_cnt as f64 * scale_factor;
-                final_bar.sell_volume = *sell_cnt as f64 * scale_factor;
-
-                for (_price, volumes) in final_bar.levels.iter_mut() {
-                    volumes.0 *= scale_factor;
-                    volumes.1 *= scale_factor;
-                }
-            }
-            batch.push(final_bar);
-        }
-
-        if !bars_to_flush.is_empty() {
-            let count = bars_to_flush.len();
-            self.ingest_market_data(&dbs.disk, bars_to_flush).await?;
-            info!("Final Backfill Flush: {} bars pushed to disk.", count);
-            BACKFILL_STATE.clear();
-        }
-        Ok(())
-    }
-
-//     async fn process_tick_backfill_header(
-//         &self,
-//         socket: &mut TcpStream,
-//         context: &IngestionContext,
-//         dbs: &Arc<AppDatabases>,
-//     ) -> db::AppResult<()> {
-//         let mut buf = [0u8; 64];
-//         socket.read_exact(&mut buf).await?;
-
-//         if let Ok(tick) = bytemuck::try_from_bytes::<dm::MultiplexedTick>(&buf) {
-//             let asset_id = self.get_asset_record_id(&tick.asset, &context.0.data_source_id);
-            
-//             // Price Selection: Use 'last' for exchange data, fallback to 'bid' for Forex
-//             let price = if tick.last > 0.0 { tick.last } else { tick.bid };
-
-//             let broker_offset_ms = self.get_broker_offset() * 1000;
-//             let utc_time_msc = tick.time_msc - broker_offset_ms;
-//             let bucket_ms = 300_000; 
-//             let bar_start_ts = (utc_time_msc / bucket_ms) * bucket_ms;
-
-//             let mut entry = BACKFILL_STATE.entry(asset_id.clone()).or_insert_with(|| {
-//                 let dt = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-//                 (
-//                     db::MarketData {
-//                         asset_id: asset_id.clone(),
-//                         time: dt,
-//                         open: price, high: price, low: price, close: price,
-//                         volume: tick.volume as f64,
-//                         buy_volume: 0.0, 
-//                         sell_volume: 0.0,
-//                     },
-//                     0, 0 
-//                 )
-//             });
-
-//             let (ref mut bar, ref mut buy_count, ref mut sell_count) = *entry;
-//             let current_bar_ts = bar.time.timestamp_millis();
-
-//             if bar_start_ts > current_bar_ts {
-//                 // --- FINALIZE OLD BAR ---
-//                 let mut finished_bar = bar.clone();
-//                 let total_ticks = (*buy_count + *sell_count) as f64;
-                
-//                 if total_ticks > 0.0 {
-//                     let ratio = *buy_count as f64 / total_ticks;
-//                     finished_bar.buy_volume = finished_bar.volume * ratio;
-//                     finished_bar.sell_volume = finished_bar.volume - finished_bar.buy_volume;
-//                 } else {
-//                     // If no flags were found, split 50/50 as a fallback
-//                     finished_bar.buy_volume = finished_bar.volume / 2.0;
-//                     finished_bar.sell_volume = finished_bar.volume / 2.0;
-//                 }
-
-//                 let dbs_disk = Arc::clone(&dbs);
-//                 let service_handle = self.clone();
-//                 tokio::spawn(async move {
-//                     let _ = service_handle.ingest_market_data(&dbs_disk.disk, vec![finished_bar]).await;
-//                 });
-
-//                 // --- RESET FOR NEW BAR ---
-//                 bar.time = time_utils::ts_to_utc_datetime(bar_start_ts).map(Datetime::from).unwrap_or_default();
-//                 bar.open = price; bar.high = price; bar.low = price; bar.close = price;
-//                 bar.volume = tick.volume as f64;
-//                 *buy_count = 0; *sell_count = 0;
-//             } else {
-//                 // --- UPDATE EXISTING BAR ---
-//                 bar.high = bar.high.max(price);
-//                 bar.low = bar.low.min(price);
-//                 bar.close = price;
-//                 bar.volume = tick.volume as f64; // Anchor to official volume
-
-//                 // Flag 32 = TICK_FLAG_BUY | Flag 64 = TICK_FLAG_SELL
-//                 if tick.flags & 32 != 0 { *buy_count += 1; }
-//                 else if tick.flags & 64 != 0 { *sell_count += 1; }
-//             }
-//         }
-//         Ok(())
-// }
 
     async fn process_session_header(
         &self,
@@ -1009,66 +709,100 @@ impl DataIngestionExt for DataService {
     }
 
 
+
     async fn ingest_tick(
         &self,
         dbs: Arc<AppDatabases>, 
-        mut update: MonitorUpdates, // We take ownership so we can modify it
+        mut update: MonitorUpdates,
         symbol: &str,
         source: &str,
+        table: &str,
         broker_offset_seconds: i64
     ) -> surrealdb::Result<()> {
         
-        // 1. Convert MT5 millis to normalized Surreal Datetime
         let adjusted_millis = update.time_msc - (broker_offset_seconds * 1000);
-        
         let datetime = Utc.timestamp_millis_opt(adjusted_millis)
             .single()
             .map(Datetime::from)
             .unwrap_or_else(|| Datetime::default());
 
-        // 2. Attach the normalized time to the struct before sending
         update.time = Some(datetime);
+        let monitor_id = db::make_composite_id(table, &[&symbol, &source]);
 
-        // 3. Generate the Composite RecordId
-        let monitor_id = db::make_composite_id("monitor", &[&symbol, &source]);
+        // --- RETRY LOGIC START ---
+        let mut attempts = 0;
+        let max_attempts = 15;
 
-        // 4. Perform the UPSERT with a direct struct bind
-        // dbs.mem
-        //     .query("UPSERT $id MERGE $data")
-        //     .bind(("id", monitor_id))
-        //     .bind(("data", update)) // This uses the #[serde] rules to rename fields automatically
-        //     .await?
-        //     .check()?;
+        loop {
+            let result = dbs.mem
+                .query("UPSERT $id SET 
+                    asset_id = $asset, 
+                    last_bid = $bid, 
+                    last_ask = $ask, 
+                    volume = $vol, 
+                    flags = $flags, 
+                    time = $time")
+                .bind(("id", monitor_id.clone()))
+                .bind(("asset", update.asset_id.clone()))
+                .bind(("bid", update.last_bid))
+                .bind(("ask", update.last_ask))
+                .bind(("vol", update.volume))
+                .bind(("flags", update.flags))
+                .bind(("time", datetime))
+                .await;
 
-        dbs.mem
-            .query("UPSERT $id SET 
-                asset_id = $asset, 
-                last_bid = $bid, 
-                last_ask = $ask, 
-                volume = $vol, 
-                time = $time")
-            .bind(("id", monitor_id))
-            .bind(("asset", update.asset_id))
-            .bind(("bid", update.last_bid))
-            .bind(("ask", update.last_ask))
-            .bind(("vol", update.volume))
-            .bind(("time", datetime))
-            .await?
-            .check()?;
-            
-        Ok(())
+            match result {
+                Ok(response) => {
+                    // If query worked, check if the response itself has an error
+                    if let Err(e) = response.check() {
+                        let err_string = e.to_string();
+                        // If it's a write conflict, we retry
+                        if err_string.contains("Write conflict") && attempts < max_attempts {
+                            attempts += 1;
+                            let delay = 5 + (attempts * 2); 
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            continue;
+                        }
+                        return Err(e);
+                    }
+                    return Ok(()); // Success!
+                }
+                Err(e) => {
+                    let err_string = e.to_string();
+                    // If the network call failed due to conflict, we retry
+                    if err_string.contains("Write conflict") && attempts < max_attempts {
+                        attempts += 1;
+                        let delay = 5 + (attempts * 2); 
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
     }
 
 
    
 
-    fn get_asset_record_id(&self, asset_bytes: &[u8], source: &str) -> RecordId {
+    // fn get_asset_record_id(&self, asset_bytes: &[u8], source: &str) -> RecordId {
 
-        let name = std::str::from_utf8(asset_bytes).unwrap_or("").trim_matches(char::from(0));
+    //     let name = std::str::from_utf8(asset_bytes).unwrap_or("").trim_matches(char::from(0));
        
-        let asset_id = db::make_composite_id("assets",&[&name, &source]);
+    //     let asset_id = db::make_composite_id("assets",&[&name, &source]);
        
-        asset_id
+    //     asset_id
+    // }
+
+    fn get_asset_record_id(&self, raw_asset: &[u8], source_id: &str) -> RecordId {
+        let clean_symbol = String::from_utf8_lossy(raw_asset)
+            .split('\0')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        
+        db::make_composite_id("assets", &[&clean_symbol, &source_id])
     }
 
 
@@ -1080,6 +814,7 @@ impl DataIngestionExt for DataService {
     ) {
         // 1. Guard: If market is closed and it's not a shutdown, save CPU and exit
         if !is_shutdown && !Mt5Watchdog::new(state.clone()).is_market_open() {
+            info!("[Mirror] Market is closed, skipping mirror cycle.");
             return;
         }
 
@@ -1099,10 +834,7 @@ impl DataIngestionExt for DataService {
         for entry in LAST_LIVE_TS.iter() {
             let (asset_id, _) = entry.pair();
                 
-            // Skip if already flushed this window
-            // if last_flushed.get(asset_id).map(|ts| *ts == target_ts).unwrap_or(false) {
-            //     continue;
-            // }
+ 
             // 3. Select ALL candles for this window from MEM node
             let query = "SELECT * FROM market_data WHERE asset_id = $asset AND time = $ts";
 
@@ -1117,18 +849,31 @@ impl DataIngestionExt for DataService {
                     
                     if !data.is_empty() {
                         let count = data.len();
-                        // 4. Use the Universal Ingester we built
+                        // 4. Use the Universal Ingester
                         if let Err(e) = self.ingest_market_data(&dbs.disk, data).await {
                             error!("[Mirror] Failed to flush {} records: {}", count, e);
                         } else {
-                            info!("[Mirror] Successfully flushed {} candles for window {} to Disk", count, target_ts);
+                            // info!("[Mirror] Successfully flushed {} candles for window {} to Disk", count, target_ts);
+                            info!("[Mirror] Synced {} NEW bars for {} {} to Disk.", count, asset_id.key.to_raw_string(), target_ts);
                         }
                     }
                 },
-                Err(e) => error!("[Mirror] Mem query failed: {}", e),
+                
+                Err(e) => error!("[Mirror] Query failed for {}: {}", asset_id.key.to_raw_string(), e),
             }
         }
+
+        if !is_shutdown {
+            // 1 Hour Pruning for Ticks, 24 Hour for MarketData
+            let candle_cutoff = Datetime::from(Utc::now() - Duration::from_hours(24));
+
+            let _ = dbs.mem.query("DELETE tick WHERE time < time::now() - 5m; DELETE market_data WHERE time < $c_cutoff;")
+                // .bind(("t_cutoff", tick_cutoff))
+                .bind(("c_cutoff", candle_cutoff))
+                .await;
+        }
     }
+
 
     async fn ingest_market_data<C: Connection>(
         &self,
@@ -1154,10 +899,7 @@ impl DataIngestionExt for DataService {
         let all_rows: Vec<db::CandleIngestRow> = dedup_map
             .into_values()
             .map(|c| {
-                // let symbol = match c.asset_id.clone().key {
-                //     surrealdb_types::RecordIdKey::Array(arr) => arr.first().unwrap().to_raw_string(),
-                //     _ => "UNKNOWN".to_string(),
-                // };
+
                 let symbol = match c.asset_id.clone().key {
                     surrealdb_types::RecordIdKey::Array(ref arr) => {
                         arr.first()
@@ -1175,7 +917,7 @@ impl DataIngestionExt for DataService {
             })
             .collect();
 
-        // let batch_value = all_rows.into_value();
+            // let batch_value = all_rows.into_value();
 
         // 3. Chunked Upsert
         for chunk in all_rows.chunks(5000) {
@@ -1189,7 +931,7 @@ impl DataIngestionExt for DataService {
                 .check()?;
         }
 
-        info!("Market Data Ingested: {} unique records processed.", unique_count);
+        info!("Market Data Ingested: {} unique records processed for asset {}.", unique_count, all_rows.first().map(|r| r.data.asset_id.key.to_raw_string()).unwrap_or_else(|| "UNKNOWN".to_string()), );
         Ok(())
     }
 
@@ -1213,22 +955,5 @@ impl DataIngestionExt for DataService {
             .collect()
     }
 
-    // fn transform_to_standard_market_data(&self, batch: Vec<MarketData>) -> Vec<db::MarketData> {
-    //     batch.into_iter()
-    //         .map(|item| db::MarketData {
-    //             asset_id: item.asset_id,
-    //             time: time_utils::ts_to_utc_datetime(item.ts)
-    //                 .map(Datetime::from)
-    //                 .unwrap_or_else(|_| Datetime::default()),
-    //             open: item.open,
-    //             high: item.high,
-    //             low: item.low,
-    //             close: item.close,
-    //             volume: item.volume,
-    //             // Map the new fields from your internal MarketData to the DB struct
-    //             buy_volume: item.buy_volume,
-    //             sell_volume: item.sell_volume,
-    //         })
-    //         .collect()
-    // }
+
 }

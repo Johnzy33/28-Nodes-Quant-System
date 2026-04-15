@@ -17,8 +17,6 @@ async fn main()-> db::AppResult<()>{
     env_logger::init();
     dotenvy::dotenv().ok();
 
- 
-
     // 1. Setup Surreal instead of Postgres
     let dbs = runtime::setup_database().await?;
 
@@ -34,10 +32,7 @@ async fn main()-> db::AppResult<()>{
         }
     });
 
-
     // 3. Run the service
     data_service.run("127.0.0.1:9090", Arc::clone(&dbs), Arc::clone(&data_service), state).await
 
-
-   
 }

@@ -97,8 +97,8 @@ impl Mt5Watchdog {
                 let now_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
                 let last_ms = self.state.last_data_received.load(Ordering::SeqCst);
                 
-                // Threshold: 10 minutes of no data (600,000 ms)
-                if (now_ms - last_ms) > 600_000 {
+                // Threshold: 10 minutes of no data (600,000 ms) //24 hrs = 86,400,000 ms
+                if (now_ms - last_ms) > 864_000_000 {
                     warn!("MT5 Stale Data Detected. Checking Circuit Breaker...");
                     
                     if !self.state.can_restart() {

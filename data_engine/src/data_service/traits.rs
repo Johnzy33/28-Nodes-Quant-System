@@ -3,11 +3,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use shared_models::data_model::*;
-// use shared_models::{SessionContextData, EightContextData};
 use surrealdb_types::SurrealValue;
-// use crate::persistable::Persistable;
-// use crate::data_views::WatermarkValue;
-// use chrono::Duration;
+
 use std::sync::Arc;
 // use std::error::Error;
 use tokio::net::{TcpStream};
@@ -19,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use shared_models::db_models::{AppDatabases};
 use shared_models::db_models as db;
+use shared_models::data_model as dm;
 use surrealdb::types::{RecordId};
 use shared_models::db_models::MonitorUpdates;
 
@@ -65,6 +63,14 @@ pub trait DataIngestionExt {
         state: WatchdogState
     ) -> db::AppResult<()>;
 
+    async fn run_startup_gap_detection(
+        &self, 
+        socket: &mut TcpStream, 
+        state: &WatchdogState
+    ) -> db::AppResult<()> ;
+
+   
+
     async fn request_manual_sync(
         &self, 
         socket: &mut TcpStream, 
@@ -86,23 +92,36 @@ pub trait DataIngestionExt {
         dbs: Arc<AppDatabases>,
     ) -> db::AppResult<()>;
 
-    async fn process_bar_header(
-        &self,
-        socket: &mut TcpStream,
-        context: &IngestionContext,
-        surreal_batch: &mut Vec<MarketData>, 
-        dbs: &Arc<AppDatabases>,                   
-    ) -> db::AppResult<()>;
 
-    async fn process_tick_backfill_header(
+
+    async fn process_tick_backfill_headerbatch(
         &self,
         socket: &mut TcpStream,
         context: &IngestionContext,
         dbs: &Arc<AppDatabases>,
-    ) -> db::AppResult<()> ;
-
-    async fn flush_backfill_state(&self, dbs: &Arc<AppDatabases>
     ) -> db::AppResult<()>;
+
+    async fn handle_backfill_aggregation(
+        &self,
+        tick: &dm::MultiplexedTick,
+        context: &IngestionContext,
+        dbs: &Arc<AppDatabases>,
+    ) -> db::AppResult<bool>;
+
+
+    async fn flush_backfill_asset(
+        &self, 
+        asset_id: &RecordId, 
+        dbs: &Arc<AppDatabases>
+    ) ;
+
+    async fn handle_sync_complete(
+        &self,
+        socket: &mut TcpStream,
+        dbs: &Arc<db::AppDatabases>,
+        state: &WatchdogState,
+    ) -> db::AppResult<()>;
+    
 
     async fn process_session_header(
         &self,
@@ -122,6 +141,7 @@ pub trait DataIngestionExt {
         update: MonitorUpdates, 
         symbol: &str,
         source: &str,
+        table: &str,
         broker_offset_seconds: i64 
     ) -> surrealdb::Result<()> ;
 

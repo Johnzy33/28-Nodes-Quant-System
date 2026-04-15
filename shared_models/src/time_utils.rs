@@ -22,8 +22,8 @@ pub fn ts_to_utc_datetime(ts_ms: i64) -> Result<DateTime<Utc>> {
     let secs = ts_ms / 1000;
     let nsecs = (ts_ms % 1000) as u32 * 1_000_000;
     
-    match NaiveDateTime::from_timestamp_opt(secs, nsecs) {
-        Some(ndt) => Ok(DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc)),
+    match DateTime::from_timestamp(secs, nsecs) {
+        Some(dt) => Ok(dt),
         None => Err(anyhow!("Invalid timestamp: {}", ts_ms)),
     }
    

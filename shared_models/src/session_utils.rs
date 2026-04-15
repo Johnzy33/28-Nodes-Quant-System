@@ -1,7 +1,7 @@
 
 // session_utils.rs in share_model 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc, Timelike, NaiveDateTime};
+use chrono::{DateTime, Timelike};
 use chrono_tz::Tz;
 use chrono_tz::America::New_York;
 
@@ -25,8 +25,8 @@ pub fn get_trading_session(ts_ms: i64) -> Result<TradingSession> {
     let secs = ts_ms / 1000;
     let nsecs = (ts_ms % 1000) as u32 * 1_000_000;
     
-    let utc_dt = match NaiveDateTime::from_timestamp_opt(secs, nsecs) {
-        Some(ndt) => DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc),
+    let utc_dt = match DateTime::from_timestamp(secs, nsecs) {
+        Some(dt) => dt,
         None => return Err(anyhow!("Invalid timestamp: {}", ts_ms)),
     };
     

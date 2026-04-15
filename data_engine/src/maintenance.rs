@@ -2,28 +2,25 @@
 
 use std::sync::Arc;
 use chrono::{ Utc};
-use log::{info};
+use log::{info, warn};
 
-use shared_models::db_models as db;
-// use tokio::sync::Mutex;
-// use std::collections::HashSet;
+use shared_models::db_models::{self as db};
+
 use async_trait::async_trait; 
-// use lazy_static::lazy_static;
+
 use tokio::net::{TcpStream};
 use tokio::io::AsyncWriteExt;
-
 
 use shared_models::data_model::IngestionCoordinatorConfig;
 use shared_models::data_model::DataService;
 use crate::traits::{DataServiceBase, DataMaintenanceExt};
-
-use surrealdb_types::Datetime;
-
+use surrealdb_types::{Datetime};
 
 
-// lazy_static! {
-//     static ref SYNCED_ASSETS: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-// }
+
+
+
+
 
 
 #[async_trait]
@@ -40,6 +37,10 @@ impl DataMaintenanceExt for DataService {
         let offset = self.get_broker_offset();
         let mut sub_list = Vec::new();
 
+        if offset == 0 {
+            warn!("Handshake using Offset 0. This is usually only correct for London/GMT brokers.");
+        }
+
         for asset in config.assets.iter().filter(|a| a.enabled) {
     
             let record_id = db::make_composite_id("assets", &[&asset.mt5_symbol, &config.data_source_id]);
@@ -53,14 +54,13 @@ impl DataMaintenanceExt for DataService {
                     // Surreal Datetime to Unix Timestamp (Seconds)
                     let utc_ts = dt.timestamp();
                     // Adjust for Broker Offset and subtract 10mins (buffer for safety/gaps)
-                    (utc_ts + offset) - 600 
+                    (utc_ts + offset) - 300 
                 }
                 None => {
                     // Default: 24 hours ago in Broker Time
                     (Utc::now().timestamp() + offset) - 86400
                 }
             };
-
             // 4. Construct JSON for MT5
             sub_list.push(serde_json::json!({
                 "mt5": asset.mt5_symbol,
@@ -70,11 +70,13 @@ impl DataMaintenanceExt for DataService {
             }));
 
             // 5. Logging with proper formatting
-            let time_display = hwm
+           
+            let displaytime = Datetime::from_timestamp(final_hwm, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                 .unwrap_or_else(|| "No Data".to_string());
 
-            info!("Prepared SYNC for {} from HWM: {}", asset.system_symbol, time_display);
+            info!("Prepared SYNC for {} from HWM: {}", asset.system_symbol, displaytime);
+        
         }
 
         //  Serialize and Prepare Binary Packet
@@ -90,7 +92,7 @@ impl DataMaintenanceExt for DataService {
 
         socket.write_all(&packet).await?;
         socket.flush().await?;
-
+    
         info!("Handshake dispatched. {} bytes sent to MT5.", json_len);
         Ok(())
     }

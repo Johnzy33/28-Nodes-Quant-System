@@ -32,8 +32,6 @@ impl DataServiceBase for DataService {
         "SELECT asset_id, time AS last_time FROM {} WHERE asset_id = $asset_id ORDER BY asset_id, time DESC LIMIT 1",
         table
     );
-
-
         let mut result = dbs
             .query(query)
             .bind(("asset_id", asset_id.clone())) // Bind the inner ID key
@@ -100,9 +98,6 @@ impl DataServiceBase for DataService {
 
         Ok(())
     }
-
-
- 
 
 }
 
